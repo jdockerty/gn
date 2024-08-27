@@ -1,8 +1,11 @@
+use std::io::Write;
 use std::net::SocketAddr;
 
 use clap::{Parser, Subcommand};
 use clap_stdin::FileOrStdin;
 use tokio::{io::AsyncReadExt, net::TcpListener};
+
+type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 #[derive(Parser)]
 struct App {
@@ -25,20 +28,23 @@ enum Commands {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<()> {
+    let mut out = std::io::stderr().lock();
+
     match App::parse().cmds {
         Commands::Write { input: _ } => {}
         Commands::Serve { address } => {
-            let bind = TcpListener::bind(address).await.unwrap();
-            eprintln!("Listening on tcp://{}", bind.local_addr().unwrap());
+            let bind = TcpListener::bind(address).await?;
+            writeln!(out, "Listening on tcp://{}", bind.local_addr()?)?;
 
             while let Ok((mut stream, _addr)) = bind.accept().await {
                 let mut s = String::new();
                 match stream.read_to_string(&mut s).await {
-                    Ok(_) => eprintln!("{s}"),
-                    Err(e) => eprintln!("Unable to read stream: {e}"),
+                    Ok(_) => writeln!(out, "{s}")?,
+                    Err(e) => writeln!(out, "Unable to read stream: {e}")?,
                 }
             }
         }
     };
+    Ok(())
 }
