@@ -2,8 +2,11 @@ use std::io::Write;
 use std::net::SocketAddr;
 
 use clap::{Parser, Subcommand};
-use clap_stdin::FileOrStdin;
-use tokio::{io::AsyncReadExt, net::TcpListener};
+use clap_stdin::MaybeStdin;
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::{TcpListener, TcpStream},
+};
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -17,8 +20,14 @@ struct App {
 enum Commands {
     /// Write data over a TCP socket
     Write {
+        #[arg(long)]
+        host: SocketAddr,
+
         /// Data to be written
-        input: FileOrStdin,
+        ///
+        /// Defaults to stdin
+        #[clap(default_value = "-")]
+        input: MaybeStdin<String>,
     },
     /// Start a TCP server
     Serve {
@@ -32,7 +41,10 @@ async fn main() -> Result<()> {
     let mut out = std::io::stderr().lock();
 
     match App::parse().cmds {
-        Commands::Write { input: _ } => {}
+        Commands::Write { input, host } => {
+            let mut stream = TcpStream::connect(host).await?;
+            stream.write_all(input.as_bytes()).await?;
+        }
         Commands::Serve { address } => {
             let bind = TcpListener::bind(address).await?;
             writeln!(out, "Listening on tcp://{}", bind.local_addr()?)?;
