@@ -2,4 +2,4 @@
 
 _grug-net (gn)_
 
-A TCP client for grugs.
+A TCP tool for grugs.
