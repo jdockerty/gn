@@ -18,14 +18,14 @@ struct App {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Write data over a TCP socket
+    /// Write data over a TCP socket.
     Write {
         #[arg(long)]
         host: SocketAddr,
 
-        /// Data to be written
+        /// Input data to be written to the TCP socket.
         ///
-        /// Defaults to stdin
+        /// Defaults to reading from stdin when unspecified.
         #[clap(default_value = "-")]
         input: MaybeStdin<String>,
     },
