@@ -28,6 +28,9 @@ enum Commands {
         /// Defaults to reading from stdin when unspecified.
         #[clap(default_value = "-")]
         input: MaybeStdin<String>,
+
+        #[clap(short, long, default_value = "1")]
+        count: u64,
     },
     /// Start a TCP server
     Serve {
@@ -41,9 +44,11 @@ async fn main() -> Result<()> {
     let mut out = std::io::stderr().lock();
 
     match App::parse().cmds {
-        Commands::Write { input, host } => {
-            let mut stream = TcpStream::connect(host).await?;
-            stream.write_all(input.as_bytes()).await?;
+        Commands::Write { input, host, count } => {
+            for _ in 0..count {
+                let mut stream = TcpStream::connect(host).await?;
+                stream.write_all(input.as_bytes()).await?;
+            }
         }
         Commands::Serve { address } => {
             let bind = TcpListener::bind(address).await?;
