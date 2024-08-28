@@ -3,12 +3,8 @@ use std::net::SocketAddr;
 
 use clap::{Parser, Subcommand};
 use clap_stdin::MaybeStdin;
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::{TcpListener, TcpStream}, time::Instant,
-};
-
-type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+use gn::StreamWriter;
+use tokio::{io::AsyncReadExt, net::TcpListener};
 
 #[derive(Parser)]
 struct App {
@@ -43,22 +39,21 @@ enum Commands {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> gn::Result<()> {
     let mut out = std::io::stderr().lock();
 
     match App::parse().cmds {
-        Commands::Write { input, host, count, duration: _ } => {
-            let start = Instant::now();
-            let mut wrote: u64 = 0;
-            for _ in 0..count {
-                let mut stream = TcpStream::connect(host).await?;
-                let input = input.as_bytes();
-                stream.write_all(input).await?;
-                wrote += input.len() as u64;
-            }
-            let elapsed = start.elapsed().as_secs();
-            let _throughput = wrote / elapsed;
+        Commands::Write {
+            input,
+            host,
+            count,
+            duration,
+        } => {
+            let mut writer = StreamWriter::new(host, input.as_bytes(), count, duration);
+            let wrote = writer.write().await.unwrap();
+            let throughput = writer.throughput();
             writeln!(out, "Wrote {wrote} bytes").unwrap();
+            writeln!(out, "Bytes per second {throughput}").unwrap();
         }
         Commands::Serve { address } => {
             let bind = TcpListener::bind(address).await?;
