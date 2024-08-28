@@ -34,11 +34,11 @@ where
     }
 
     /// Write to the provided host(s), returning the total number of bytes written.
-    /// At the same time, this also calculated the throughput for total number
+    /// At the same time, this also calculates the throughput for total number
     /// of bytes sent per second.
     ///
-    /// NOTE: Owing to truncation to seconds, the produced throughput may not
-    /// be accurate for low write counts.
+    /// NOTE: Owing to truncation from nanosecond precision to seconds, the
+    /// produced throughput may not be accurate for low write counts.
     pub async fn write(&mut self) -> crate::Result<u64> {
         let addrs = self
             .host
@@ -61,8 +61,8 @@ where
     /// Retrieve the perceived bytes per second throughput that was written to
     /// the TCP sockets.
     ///
-    /// NOTE: Owing to truncation to seconds, the produced throughput may not
-    /// be accurate for low write counts.
+    /// NOTE: Owing to truncation from nanosecond precision to seconds, the
+    /// produced throughput may not be accurate for low write counts.
     pub fn throughput(&self) -> f64 {
         self.throughput
     }
