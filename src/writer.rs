@@ -67,3 +67,39 @@ where
         self.throughput
     }
 }
+
+#[cfg(test)]
+mod test {
+    use std::net::TcpListener;
+
+    use crate::StreamWriter;
+
+    #[tokio::test]
+    async fn write() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+
+        let input = b"hello";
+        let size = input.len() as u64;
+        let mut s = StreamWriter::new(listener.local_addr().unwrap(), input, 1, None);
+        assert_eq!(s.write().await.unwrap(), size);
+
+        let mut s = StreamWriter::new(listener.local_addr().unwrap(), input, 5, None);
+        assert_eq!(
+            s.write().await.unwrap(),
+            size * 5,
+            "Expected 5 times the input bytes"
+        );
+    }
+
+    #[tokio::test]
+    async fn throughput() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+
+        let mut s = StreamWriter::new(listener.local_addr().unwrap(), b"a", 100, None);
+        s.write().await.unwrap();
+        assert!(
+            s.throughput() != 0.0,
+            "Throughput should be set after writing data"
+        );
+    }
+}
