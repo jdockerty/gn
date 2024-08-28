@@ -1,4 +1,4 @@
-use std::net::ToSocketAddrs;
+use std::{net::ToSocketAddrs, time::Duration};
 
 use tokio::{io::AsyncWriteExt, net::TcpStream, time::Instant};
 
@@ -46,10 +46,26 @@ where
             .expect("Valid socket addresses are provided");
         let start = Instant::now();
         for addr in addrs {
-            for _ in 0..self.count {
-                let mut stream = TcpStream::connect(addr).await?;
-                stream.write_all(self.input).await?;
-                self.bytes_written += self.input.len() as u64;
+            let mut stream = TcpStream::connect(addr).await?;
+            match self.duration {
+                Some(duration) => {
+                    let for_duration = Instant::now();
+                    let mut interval = tokio::time::interval(Duration::from_millis(100));
+                    loop {
+                        interval.tick().await;
+                        if for_duration.elapsed() > *duration {
+                            break;
+                        } else {
+                            stream.write_all(self.input).await?;
+                        }
+                    }
+                }
+                None => {
+                    for _ in 0..self.count {
+                        stream.write_all(self.input).await?;
+                        self.bytes_written += self.input.len() as u64;
+                    }
+                }
             }
         }
 
@@ -70,7 +86,9 @@ where
 
 #[cfg(test)]
 mod test {
-    use std::net::TcpListener;
+    use std::{net::TcpListener, str::FromStr, time::Instant};
+
+    use humantime::Duration;
 
     use crate::StreamWriter;
 
@@ -89,6 +107,20 @@ mod test {
             size * 5,
             "Expected 5 times the input bytes"
         );
+    }
+
+    #[tokio::test]
+    async fn write_for_duration() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+
+        let input = b"duration_write";
+        let duration = Duration::from_str("2s").unwrap();
+        let mut s = StreamWriter::new(listener.local_addr().unwrap(), input, 1, Some(duration));
+
+        let start = Instant::now();
+        s.write().await.unwrap();
+        let elapsed = start.elapsed().as_secs();
+        assert_eq!(elapsed, 2);
     }
 
     #[tokio::test]
