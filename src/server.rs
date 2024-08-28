@@ -4,6 +4,9 @@ use tokio::{io::AsyncReadExt, net::TcpListener};
 
 pub struct Server<W: Write> {
     addr: SocketAddr,
+
+    /// Buffer for data to be written too. This buffer sink is for the actual
+    /// data that is being sent and _not_ included with log lines.
     buffer: W,
 }
 
