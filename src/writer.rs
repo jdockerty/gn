@@ -1,4 +1,4 @@
-use std::{net::ToSocketAddrs, time::Duration};
+use std::net::ToSocketAddrs;
 
 use tokio::{io::AsyncWriteExt, net::TcpStream, time::Instant};
 
@@ -46,22 +46,22 @@ where
             .expect("Valid socket addresses are provided");
         let start = Instant::now();
         for addr in addrs {
-            let mut stream = TcpStream::connect(addr).await?;
             match self.duration {
                 Some(duration) => {
                     let for_duration = Instant::now();
-                    let mut interval = tokio::time::interval(Duration::from_millis(100));
                     loop {
-                        interval.tick().await;
-                        if for_duration.elapsed() > *duration {
+                        if for_duration.elapsed() >= *duration {
                             break;
                         } else {
+                            let mut stream = TcpStream::connect(addr).await?;
                             stream.write_all(self.input).await?;
+                            self.bytes_written += self.input.len() as u64;
                         }
                     }
                 }
                 None => {
                     for _ in 0..self.count {
+                        let mut stream = TcpStream::connect(addr).await?;
                         stream.write_all(self.input).await?;
                         self.bytes_written += self.input.len() as u64;
                     }
