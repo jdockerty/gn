@@ -4,7 +4,7 @@ use std::net::SocketAddr;
 use clap::{Parser, Subcommand};
 use clap_stdin::MaybeStdin;
 use gn::StreamWriter;
-use tokio::{io::AsyncReadExt, net::TcpListener, time::Instant};
+use tokio::{io::AsyncReadExt, net::TcpListener};
 
 #[derive(Parser)]
 struct App {
@@ -49,10 +49,11 @@ async fn main() -> gn::Result<()> {
             count,
             duration,
         } => {
-            let _start = Instant::now();
             let mut writer = StreamWriter::new(host, input.as_bytes(), count, duration);
             let wrote = writer.write().await.unwrap();
+            let throughput = writer.throughput();
             writeln!(out, "Wrote {wrote} bytes").unwrap();
+            writeln!(out, "Bytes per second {throughput}").unwrap();
         }
         Commands::Serve { address } => {
             let bind = TcpListener::bind(address).await?;
