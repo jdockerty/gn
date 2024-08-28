@@ -3,8 +3,7 @@ use std::net::SocketAddr;
 
 use clap::{Parser, Subcommand};
 use clap_stdin::MaybeStdin;
-use gn::StreamWriter;
-use tokio::{io::AsyncReadExt, net::TcpListener};
+use gn::{Server, StreamWriter};
 
 #[derive(Parser)]
 struct App {
@@ -56,16 +55,8 @@ async fn main() -> gn::Result<()> {
             writeln!(out, "Bytes per second {throughput}").unwrap();
         }
         Commands::Serve { address } => {
-            let bind = TcpListener::bind(address).await?;
-            writeln!(out, "Listening on tcp://{}", bind.local_addr()?)?;
-
-            while let Ok((mut stream, _addr)) = bind.accept().await {
-                let mut s = String::new();
-                match stream.read_to_string(&mut s).await {
-                    Ok(_) => writeln!(out, "{s}")?,
-                    Err(e) => writeln!(out, "Unable to read stream: {e}")?,
-                }
-            }
+            let mut server = Server::new(address, out);
+            server.serve().await?;
         }
     };
     Ok(())
