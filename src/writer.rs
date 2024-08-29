@@ -94,7 +94,7 @@ mod test {
 
     use humantime::Duration;
 
-    use crate::StreamWriter;
+    use crate::{writer::WriteOptions, StreamWriter};
 
     #[tokio::test]
     async fn write() {
@@ -102,10 +102,18 @@ mod test {
 
         let input = b"hello";
         let size = input.len() as u64;
-        let mut s = StreamWriter::new(listener.local_addr().unwrap(), input, 1, None);
+        let mut s = StreamWriter::new(
+            listener.local_addr().unwrap(),
+            input,
+            WriteOptions::Count(1),
+        );
         assert_eq!(s.write().await.unwrap(), size);
 
-        let mut s = StreamWriter::new(listener.local_addr().unwrap(), input, 5, None);
+        let mut s = StreamWriter::new(
+            listener.local_addr().unwrap(),
+            input,
+            WriteOptions::Count(5),
+        );
         assert_eq!(
             s.write().await.unwrap(),
             size * 5,
@@ -119,7 +127,11 @@ mod test {
 
         let input = b"duration_write";
         let duration = Duration::from_str("2s").unwrap();
-        let mut s = StreamWriter::new(listener.local_addr().unwrap(), input, 1, Some(duration));
+        let mut s = StreamWriter::new(
+            listener.local_addr().unwrap(),
+            input,
+            WriteOptions::Duration(duration),
+        );
 
         let start = Instant::now();
         s.write().await.unwrap();
@@ -131,7 +143,11 @@ mod test {
     async fn throughput() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
 
-        let mut s = StreamWriter::new(listener.local_addr().unwrap(), b"a", 100, None);
+        let mut s = StreamWriter::new(
+            listener.local_addr().unwrap(),
+            b"a",
+            WriteOptions::Count(100),
+        );
         s.write().await.unwrap();
         assert!(
             s.throughput() != 0.0,
