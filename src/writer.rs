@@ -2,34 +2,32 @@ use std::net::{SocketAddr, ToSocketAddrs};
 
 use tokio::{io::AsyncWriteExt, net::TcpStream, time::Instant};
 
+pub enum WriteOptions {
+    Count(u64),
+    Duration(humantime::Duration),
+}
+
 pub struct StreamWriter<'a, S: ToSocketAddrs> {
     host: S,
     input: &'a [u8],
     input_size: u64,
 
-    count: u64,
+    write_options: WriteOptions,
+
     bytes_written: u64,
     throughput: f64,
-    #[allow(dead_code)]
-    duration: Option<humantime::Duration>,
 }
 
 impl<'a, S> StreamWriter<'a, S>
 where
     S: ToSocketAddrs,
 {
-    pub fn new(
-        host: S,
-        input: &'a [u8],
-        count: u64,
-        duration: Option<humantime::Duration>,
-    ) -> Self {
+    pub fn new(host: S, input: &'a [u8], write_options: WriteOptions) -> Self {
         Self {
             host,
             input,
             input_size: input.len() as u64,
-            count,
-            duration,
+            write_options,
             bytes_written: 0,
             throughput: 0.0,
         }
@@ -56,8 +54,13 @@ where
             .expect("Valid socket addresses are provided");
         let start = Instant::now();
         for addr in addrs {
-            match self.duration {
-                Some(duration) => {
+            match self.write_options {
+                WriteOptions::Count(count) => {
+                    for _ in 0..count {
+                        self.write_stream(addr).await?;
+                    }
+                }
+                WriteOptions::Duration(duration) => {
                     let for_duration = Instant::now();
                     loop {
                         if for_duration.elapsed() >= *duration {
@@ -65,11 +68,6 @@ where
                         } else {
                             self.write_stream(addr).await?;
                         }
-                    }
-                }
-                None => {
-                    for _ in 0..self.count {
-                        self.write_stream(addr).await?;
                     }
                 }
             }
