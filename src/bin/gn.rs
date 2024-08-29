@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 
 use clap::{Parser, Subcommand};
 use clap_stdin::MaybeStdin;
-use gn::{Server, StreamWriter};
+use gn::{Server, StreamWriter, WriteOptions};
 
 #[derive(Parser)]
 struct App {
@@ -48,11 +48,15 @@ async fn main() -> gn::Result<()> {
             count,
             duration,
         } => {
-            let mut writer = StreamWriter::new(host, input.as_bytes(), count, duration);
-            let wrote = writer.write().await.unwrap();
+            let opts = match duration {
+                Some(d) => WriteOptions::Duration(d),
+                None => WriteOptions::Count(count),
+            };
+            let mut writer = StreamWriter::new(host, input.as_bytes(), opts);
+            let wrote = writer.write().await?;
             let throughput = writer.throughput();
-            writeln!(out, "Wrote {wrote} bytes").unwrap();
-            writeln!(out, "Bytes per second {throughput}").unwrap();
+            writeln!(out, "Wrote {wrote} bytes")?;
+            writeln!(out, "Bytes per second {throughput}")?;
         }
         Commands::Serve { address } => {
             let mut server = Server::new(address, out);
