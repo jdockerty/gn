@@ -35,6 +35,14 @@ where
         }
     }
 
+    /// Write the provided input data to a [`SocketAddr`].
+    async fn write_stream(&mut self, addr: SocketAddr) -> crate::Result<()> {
+        let mut stream = TcpStream::connect(addr).await?;
+        stream.write_all(self.input).await?;
+        self.bytes_written += self.input_size;
+        Ok(())
+    }
+
     /// Write to the provided host(s), returning the total number of bytes written.
     /// At the same time, this also calculates the throughput for total number
     /// of bytes sent per second.
@@ -55,17 +63,13 @@ where
                         if for_duration.elapsed() >= *duration {
                             break;
                         } else {
-                            let mut stream = TcpStream::connect(addr).await?;
-                            stream.write_all(self.input).await?;
-                            self.bytes_written += self.input.len() as u64;
+                            self.write_stream(addr).await?;
                         }
                     }
                 }
                 None => {
                     for _ in 0..self.count {
-                        let mut stream = TcpStream::connect(addr).await?;
-                        stream.write_all(self.input).await?;
-                        self.bytes_written += self.input.len() as u64;
+                        self.write_stream(addr).await?;
                     }
                 }
             }
