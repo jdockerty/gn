@@ -1,10 +1,11 @@
-use std::net::ToSocketAddrs;
+use std::net::{SocketAddr, ToSocketAddrs};
 
 use tokio::{io::AsyncWriteExt, net::TcpStream, time::Instant};
 
 pub struct StreamWriter<'a, S: ToSocketAddrs> {
     host: S,
     input: &'a [u8],
+    input_size: u64,
 
     count: u64,
     bytes_written: u64,
@@ -26,6 +27,7 @@ where
         Self {
             host,
             input,
+            input_size: input.len() as u64,
             count,
             duration,
             bytes_written: 0,
