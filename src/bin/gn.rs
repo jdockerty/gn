@@ -34,6 +34,10 @@ enum Commands {
         /// every case going to be reached first.
         #[clap(short, long)]
         duration: Option<humantime::Duration>,
+
+        /// Number of concurrent requests to send.
+        #[clap(short, long)]
+        concurrency: Option<u64>,
     },
     /// Start a TCP server
     Serve {
@@ -52,8 +56,9 @@ async fn main() -> gn::Result<()> {
             host,
             count,
             duration,
+            concurrency,
         } => {
-            let opts = WriteOptions::from_flags(count, duration);
+            let opts = WriteOptions::from_flags(count, duration, concurrency);
             let mut writer = StreamWriter::new(host, input.as_bytes(), opts);
             let wrote = writer.write().await?;
             let throughput = writer.throughput();
