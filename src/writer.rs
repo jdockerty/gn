@@ -123,20 +123,29 @@ mod test {
 
     #[tokio::test]
     async fn write_for_duration() {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        // Use a tokio listener to not block the runtime so that we can accept
+        // the incoming connections. When writing for a duration the backlog of
+        // the listen syscall can fill up, so we must accept the incoming connections,
+        // even if they are discarded, otherwise the test can come to a halt.
+        // See backlog parameter from https://man7.org/linux/man-pages/man2/listen.2.html
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
 
-        let input = b"duration_write";
+        tokio::spawn(async move {
+            loop {
+                listener.accept().await.unwrap();
+            }
+        });
+
+        let input = b"duration";
         let duration = Duration::from_str("2s").unwrap();
-        let mut s = StreamWriter::new(
-            listener.local_addr().unwrap(),
-            input,
-            WriteOptions::Duration(duration),
-        );
+        let mut s = StreamWriter::new(addr, input, WriteOptions::Duration(duration));
 
         let start = Instant::now();
         s.write().await.unwrap();
         let elapsed = start.elapsed().as_secs();
         assert_eq!(elapsed, 2);
+        println!("Wrote {} bytes per second", s.throughput());
     }
 
     #[tokio::test]
