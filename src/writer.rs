@@ -11,16 +11,24 @@ pub enum WriteOptions {
     /// Write a `u64` number of streams or write for a `Duration` length of time,
     /// whichever comes first.
     CountOrDuration(u64, humantime::Duration),
+    /// Write a concurrent number of streams up to a particular count.
+    ConcurrencyWithCount(u64, u64),
 }
 
 impl WriteOptions {
     /// Create [`WriteOptions`] from the known flags of the application which
     /// influence the behaviour of writes.
-    pub fn from_flags(count: u64, duration: Option<humantime::Duration>) -> Self {
-        match duration {
-            Some(d) if count > 1 => WriteOptions::CountOrDuration(count, d),
-            Some(d) => WriteOptions::Duration(d),
-            None => WriteOptions::Count(count),
+    pub fn from_flags(
+        count: u64,
+        duration: Option<humantime::Duration>,
+        concurrency: Option<u64>,
+    ) -> Self {
+        match (duration, concurrency) {
+            (Some(d), None) if count > 1 => WriteOptions::CountOrDuration(count, d),
+            (Some(d), None) => WriteOptions::Duration(d),
+            (None, Some(c)) => WriteOptions::ConcurrencyWithCount(c, count),
+            (Some(_d), Some(_c)) => todo!(),
+            (None, None) => WriteOptions::Count(count),
         }
     }
 }
