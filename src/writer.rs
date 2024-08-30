@@ -3,6 +3,7 @@ use std::net::{SocketAddr, ToSocketAddrs};
 use tokio::{io::AsyncWriteExt, net::TcpStream, time::Instant};
 
 /// Desired behaviour for how a socket should be written to.
+#[derive(Debug)]
 pub enum WriteOptions {
     /// Write a `u64` number of streams.
     Count(u64),
