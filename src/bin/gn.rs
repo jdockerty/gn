@@ -48,10 +48,7 @@ async fn main() -> gn::Result<()> {
             count,
             duration,
         } => {
-            let opts = match duration {
-                Some(d) => WriteOptions::Duration(d),
-                None => WriteOptions::Count(count),
-            };
+            let opts = WriteOptions::from_flags(count, duration);
             let mut writer = StreamWriter::new(host, input.as_bytes(), opts);
             let wrote = writer.write().await?;
             let throughput = writer.throughput();

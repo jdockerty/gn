@@ -5,6 +5,17 @@ use tokio::{io::AsyncWriteExt, net::TcpStream, time::Instant};
 pub enum WriteOptions {
     Count(u64),
     Duration(humantime::Duration),
+    CountOrDuration(u64, humantime::Duration),
+}
+
+impl WriteOptions {
+    pub fn from_flags(count: u64, duration: Option<humantime::Duration>) -> Self {
+        match duration {
+            Some(d) if count > 1 => WriteOptions::CountOrDuration(count, d),
+            Some(d) => WriteOptions::Duration(d),
+            None => WriteOptions::Count(count),
+        }
+    }
 }
 
 pub struct StreamWriter<'a, S: ToSocketAddrs> {
@@ -70,6 +81,7 @@ where
                         }
                     }
                 }
+                WriteOptions::CountOrDuration(_count, _duration) => unimplemented!(),
             }
         }
 
@@ -95,6 +107,31 @@ mod test {
     use humantime::Duration;
 
     use crate::{writer::WriteOptions, StreamWriter};
+
+    macro_rules! write_options {
+        ($name:ident, opts = $opts:expr, expected = $expected:pat) => {
+            #[test]
+            fn $name() {
+                assert!(matches!($opts, $expected));
+            }
+        };
+    }
+
+    write_options!(
+        from_flags_count,
+        opts = WriteOptions::from_flags(1, None),
+        expected = WriteOptions::Count(1)
+    );
+    write_options!(
+        from_flags_duration,
+        opts = WriteOptions::from_flags(1, Some(humantime::Duration::from_str("10s").unwrap())),
+        expected = WriteOptions::Duration(_)
+    );
+    write_options!(
+        from_flags_count_or_duration,
+        opts = WriteOptions::from_flags(3, Some(humantime::Duration::from_str("10s").unwrap())),
+        expected = WriteOptions::CountOrDuration(3, _)
+    );
 
     #[tokio::test]
     async fn write() {
