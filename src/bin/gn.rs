@@ -27,6 +27,11 @@ enum Commands {
         #[clap(short, long, default_value = "1")]
         count: u64,
 
+        /// The duration of time to write for, e.g. 30s
+        ///
+        /// When provided alongside `count`, whichever comes first will then halt
+        /// writes. For example, duration=40s and count=10, the count is in almost
+        /// every case going to be reached first.
         #[clap(short, long)]
         duration: Option<humantime::Duration>,
     },
