@@ -36,35 +36,23 @@ impl WriteOptions {
 pub struct StreamWriter<'a, S: ToSocketAddrs> {
     host: S,
     input: &'a [u8],
-    input_size: u64,
-
-    write_options: WriteOptions,
-
     bytes_written: u64,
     throughput: f64,
+    write_options: WriteOptions,
 }
 
 impl<'a, S> StreamWriter<'a, S>
 where
-    S: ToSocketAddrs,
+    S: ToSocketAddrs + Sync,
 {
     pub fn new(host: S, input: &'a [u8], write_options: WriteOptions) -> Self {
         Self {
             host,
             input,
-            input_size: input.len() as u64,
             write_options,
             bytes_written: 0,
             throughput: 0.0,
         }
-    }
-
-    /// Write the provided input data to a [`SocketAddr`].
-    async fn write_stream(&mut self, addr: SocketAddr) -> crate::Result<()> {
-        let mut stream = TcpStream::connect(addr).await?;
-        stream.write_all(self.input).await?;
-        self.bytes_written += self.input_size;
-        Ok(())
     }
 
     /// Write to the provided host(s), returning the total number of bytes written.
@@ -124,6 +112,13 @@ where
     pub fn throughput(&self) -> f64 {
         self.throughput
     }
+}
+
+/// Write the provided input data to a [`SocketAddr`].
+async fn write_stream(addr: SocketAddr, input: &[u8]) -> crate::Result<u64> {
+    let mut stream = TcpStream::connect(addr).await?;
+    stream.write_all(input).await?;
+    Ok(input.len() as u64)
 }
 
 #[cfg(test)]
