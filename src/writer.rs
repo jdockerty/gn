@@ -156,30 +156,36 @@ mod test {
         expected = WriteOptions::CountOrDuration(3, _)
     );
 
-    #[tokio::test]
-    async fn write() {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-
-        let input = b"hello";
-        let size = input.len() as u64;
-        let mut s = StreamWriter::new(
-            listener.local_addr().unwrap(),
-            input,
-            WriteOptions::Count(1),
-        );
-        assert_eq!(s.write().await.unwrap(), size);
-
-        let mut s = StreamWriter::new(
-            listener.local_addr().unwrap(),
-            input,
-            WriteOptions::Count(5),
-        );
-        assert_eq!(
-            s.write().await.unwrap(),
-            size * 5,
-            "Expected 5 times the input bytes"
-        );
+    macro_rules! write_count {
+        ($name:ident, input = $input:expr, count = $count:expr, expected = $expected:expr) => {
+            #[tokio::test]
+            async fn $name() {
+                let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+                let mut s = StreamWriter::new(
+                    listener.local_addr().unwrap(),
+                    $input,
+                    WriteOptions::Count($count),
+                );
+                assert_eq!(s.write().await.unwrap(), $expected);
+            }
+        };
     }
+
+    write_count!(write_single, input = b"hello", count = 1, expected = 5);
+    write_count!(write_multiple, input = b"hello", count = 5, expected = 25);
+    write_count!(
+        write_large,
+        input = b"wow-there's-a-lot-of-text-here",
+        count = 3,
+        expected = 90
+    );
+    write_count!(write_tiny, input = b"a", count = 1, expected = 1);
+    write_count!(
+        write_tiny_multiple,
+        input = b"a",
+        count = 100,
+        expected = 100
+    );
 
     #[tokio::test]
     async fn write_for_duration() {
