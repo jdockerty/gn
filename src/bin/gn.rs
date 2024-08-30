@@ -36,7 +36,7 @@ enum Commands {
         duration: Option<humantime::Duration>,
 
         /// Number of concurrent requests to send.
-        #[clap(short, long)]
+        #[clap(long)]
         concurrency: Option<u64>,
     },
     /// Start a TCP server
