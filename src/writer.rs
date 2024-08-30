@@ -2,13 +2,20 @@ use std::net::{SocketAddr, ToSocketAddrs};
 
 use tokio::{io::AsyncWriteExt, net::TcpStream, time::Instant};
 
+/// Desired behaviour for how a socket should be written to.
 pub enum WriteOptions {
+    /// Write a `u64` number of streams.
     Count(u64),
+    /// Write for a `Duration` length of time.
     Duration(humantime::Duration),
+    /// Write a `u64` number of streams or write for a `Duration` length of time,
+    /// whichever comes first.
     CountOrDuration(u64, humantime::Duration),
 }
 
 impl WriteOptions {
+    /// Create [`WriteOptions`] from the known flags of the application which
+    /// influence the behaviour of writes.
     pub fn from_flags(count: u64, duration: Option<humantime::Duration>) -> Self {
         match duration {
             Some(d) if count > 1 => WriteOptions::CountOrDuration(count, d),
