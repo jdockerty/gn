@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 
 use clap::{Parser, Subcommand};
 use clap_stdin::MaybeStdin;
-use gn::{Server, StreamWriter};
+use gn::{Server, StreamWriter, WriteOptions};
 
 #[derive(Parser)]
 struct App {
@@ -27,6 +27,11 @@ enum Commands {
         #[clap(short, long, default_value = "1")]
         count: u64,
 
+        /// The duration of time to write for, e.g. 30s
+        ///
+        /// When provided alongside `count`, whichever comes first will then halt
+        /// writes. For example, duration=40s and count=10, the count is in almost
+        /// every case going to be reached first.
         #[clap(short, long)]
         duration: Option<humantime::Duration>,
     },
@@ -48,11 +53,12 @@ async fn main() -> gn::Result<()> {
             count,
             duration,
         } => {
-            let mut writer = StreamWriter::new(host, input.as_bytes(), count, duration);
-            let wrote = writer.write().await.unwrap();
+            let opts = WriteOptions::from_flags(count, duration);
+            let mut writer = StreamWriter::new(host, input.as_bytes(), opts);
+            let wrote = writer.write().await?;
             let throughput = writer.throughput();
-            writeln!(out, "Wrote {wrote} bytes").unwrap();
-            writeln!(out, "Bytes per second {throughput}").unwrap();
+            writeln!(out, "Wrote {wrote} bytes")?;
+            writeln!(out, "Bytes per second {throughput}")?;
         }
         Commands::Serve { address } => {
             let mut server = Server::new(address, out);
