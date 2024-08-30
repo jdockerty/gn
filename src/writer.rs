@@ -157,23 +157,30 @@ mod test {
 
     write_options!(
         from_flags_default_count,
-        opts = WriteOptions::from_flags(1, None),
+        opts = WriteOptions::from_flags(1, None, None),
         expected = WriteOptions::Count(1)
     );
     write_options!(
         from_flags_non_default_count,
-        opts = WriteOptions::from_flags(100_000_000, None),
+        opts = WriteOptions::from_flags(100_000_000, None, None),
         expected = WriteOptions::Count(100_000_000)
     );
     write_options!(
         from_flags_duration,
-        opts = WriteOptions::from_flags(1, Some(humantime::Duration::from_str("10s").unwrap())),
+        opts =
+            WriteOptions::from_flags(1, Some(humantime::Duration::from_str("10s").unwrap()), None),
         expected = WriteOptions::Duration(_)
     );
     write_options!(
         from_flags_count_or_duration,
-        opts = WriteOptions::from_flags(3, Some(humantime::Duration::from_str("10s").unwrap())),
+        opts =
+            WriteOptions::from_flags(3, Some(humantime::Duration::from_str("10s").unwrap()), None),
         expected = WriteOptions::CountOrDuration(3, _)
+    );
+    write_options!(
+        from_flags_concurrency_count,
+        opts = WriteOptions::from_flags(100, None, Some(10)),
+        expected = WriteOptions::ConcurrencyWithCount(10, 100)
     );
 
     /// Encompass the count variant of the write options into a macro for ease of
@@ -233,6 +240,24 @@ mod test {
         s.write().await.unwrap();
         let elapsed = start.elapsed().as_secs();
         assert_eq!(elapsed, 2);
+        println!("Wrote {} bytes per second", s.throughput());
+    }
+
+    #[tokio::test]
+    async fn write_concurrency() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        tokio::spawn(async move {
+            loop {
+                listener.accept().await.unwrap();
+            }
+        });
+
+        let input = b"c";
+        let mut s = StreamWriter::new(addr, input, WriteOptions::ConcurrencyWithCount(5, 100_000));
+
+        assert_eq!(s.write().await.unwrap(), 100_000);
         println!("Wrote {} bytes per second", s.throughput());
     }
 
