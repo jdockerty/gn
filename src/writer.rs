@@ -81,7 +81,18 @@ where
                         }
                     }
                 }
-                WriteOptions::CountOrDuration(_count, _duration) => unimplemented!(),
+                WriteOptions::CountOrDuration(count, duration) => {
+                    let for_duration = Instant::now();
+                    let mut sent = 0;
+                    loop {
+                        if sent == count || for_duration.elapsed() >= *duration {
+                            break;
+                        } else {
+                            self.write_stream(addr).await?;
+                            sent += 1;
+                        }
+                    }
+                }
             }
         }
 
