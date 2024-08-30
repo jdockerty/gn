@@ -156,6 +156,8 @@ mod test {
         expected = WriteOptions::CountOrDuration(3, _)
     );
 
+    /// Encompass the count variant of the write options into a macro for ease of
+    /// use of testing various scenarios
     macro_rules! write_count {
         ($name:ident, input = $input:expr, count = $count:expr, expected = $expected:expr) => {
             #[tokio::test]
