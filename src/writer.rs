@@ -118,9 +118,14 @@ mod test {
     }
 
     write_options!(
-        from_flags_count,
+        from_flags_default_count,
         opts = WriteOptions::from_flags(1, None),
         expected = WriteOptions::Count(1)
+    );
+    write_options!(
+        from_flags_non_default_count,
+        opts = WriteOptions::from_flags(100_000_000, None),
+        expected = WriteOptions::Count(100_000_000)
     );
     write_options!(
         from_flags_duration,
