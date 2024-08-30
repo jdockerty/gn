@@ -71,7 +71,7 @@ where
             match self.write_options {
                 WriteOptions::Count(count) => {
                     for _ in 0..count {
-                        self.write_stream(addr).await?;
+                        self.bytes_written += write_stream(addr, self.input).await?;
                     }
                 }
                 WriteOptions::Duration(duration) => {
@@ -80,7 +80,7 @@ where
                         if for_duration.elapsed() >= *duration {
                             break;
                         } else {
-                            self.write_stream(addr).await?;
+                            self.bytes_written += write_stream(addr, self.input).await?;
                         }
                     }
                 }
@@ -91,16 +91,33 @@ where
                         if sent == count || for_duration.elapsed() >= *duration {
                             break;
                         } else {
-                            self.write_stream(addr).await?;
+                            self.bytes_written += write_stream(addr, self.input).await?;
                             sent += 1;
                         }
+                    }
+                }
+                WriteOptions::ConcurrencyWithCount(concurrency, count) => {
+                    let mut tasks = Vec::new();
+                    let requests_per_task = count / concurrency;
+                    for _ in 0..concurrency {
+                        let input = self.input.to_owned();
+                        let task = tokio::spawn(async move {
+                            let mut task_bytes = 0;
+                            for _ in 0..requests_per_task {
+                                task_bytes += write_stream(addr, input.as_slice()).await.unwrap();
+                            }
+                            task_bytes
+                        });
+                        tasks.push(task);
+                    }
+                    for task in tasks {
+                        self.bytes_written += task.await?;
                     }
                 }
             }
         }
 
         self.throughput = self.bytes_written as f64 / start.elapsed().as_secs() as f64;
-
         Ok(self.bytes_written)
     }
 
