@@ -101,7 +101,7 @@ where
                     }
                 }
                 WriteOptions::ConcurrencyWithCount(concurrency, count) => {
-                    let mut tasks = Vec::new();
+                    let mut futs = FuturesUnordered::new();
                     let requests_per_task = count / concurrency;
                     for _ in 0..concurrency {
                         let input = self.input.to_owned();
@@ -112,10 +112,10 @@ where
                             }
                             task_bytes
                         });
-                        tasks.push(task);
+                        futs.push(task);
                     }
-                    for task in tasks {
-                        self.bytes_written += task.await?;
+                    while let Some(task) = futs.next().await {
+                        self.bytes_written += task?;
                     }
                 }
                 WriteOptions::ConcurrencyWithDuration(concurrency, duration) => {
