@@ -170,7 +170,7 @@ mod test {
 
     use humantime::Duration;
 
-    use crate::{writer::WriteOptions, SocketManager};
+    use crate::{manager::WriteOptions, SocketManager};
 
     macro_rules! write_options {
         ($name:ident, opts = $opts:expr, expected = $expected:pat) => {
