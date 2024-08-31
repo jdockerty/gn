@@ -37,7 +37,7 @@ impl WriteOptions {
     }
 }
 
-pub struct StreamWriter<'a, S: ToSocketAddrs> {
+pub struct SocketManager<'a, S: ToSocketAddrs> {
     host: S,
     input: &'a [u8],
     bytes_written: u64,
@@ -45,7 +45,7 @@ pub struct StreamWriter<'a, S: ToSocketAddrs> {
     write_options: WriteOptions,
 }
 
-impl<'a, S> StreamWriter<'a, S>
+impl<'a, S> SocketManager<'a, S>
 where
     S: ToSocketAddrs + Sync,
 {
@@ -170,7 +170,7 @@ mod test {
 
     use humantime::Duration;
 
-    use crate::{writer::WriteOptions, StreamWriter};
+    use crate::{writer::WriteOptions, SocketManager};
 
     macro_rules! write_options {
         ($name:ident, opts = $opts:expr, expected = $expected:pat) => {
@@ -225,7 +225,7 @@ mod test {
             #[tokio::test]
             async fn $name() {
                 let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-                let mut s = StreamWriter::new(
+                let mut s = SocketManager::new(
                     listener.local_addr().unwrap(),
                     $input,
                     WriteOptions::Count($count),
@@ -269,7 +269,7 @@ mod test {
 
         let input = b"duration";
         let duration = Duration::from_str("2s").unwrap();
-        let mut s = StreamWriter::new(addr, input, WriteOptions::Duration(duration));
+        let mut s = SocketManager::new(addr, input, WriteOptions::Duration(duration));
 
         let start = Instant::now();
         s.write().await.unwrap();
@@ -290,7 +290,7 @@ mod test {
         });
 
         let input = b"c";
-        let mut s = StreamWriter::new(addr, input, WriteOptions::ConcurrencyWithCount(5, 100_000));
+        let mut s = SocketManager::new(addr, input, WriteOptions::ConcurrencyWithCount(5, 100_000));
 
         assert_eq!(s.write().await.unwrap(), 100_000);
         println!("Wrote {} bytes per second", s.throughput());
@@ -309,7 +309,7 @@ mod test {
 
         let input = b"concurrent_duration";
         let duration = humantime::Duration::from_str("2s").unwrap();
-        let mut s = StreamWriter::new(
+        let mut s = SocketManager::new(
             addr,
             input,
             WriteOptions::ConcurrencyWithDuration(10, duration),
@@ -331,7 +331,7 @@ mod test {
     async fn throughput() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
 
-        let mut s = StreamWriter::new(
+        let mut s = SocketManager::new(
             listener.local_addr().unwrap(),
             b"a",
             WriteOptions::Count(100),
