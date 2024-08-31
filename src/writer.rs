@@ -1,5 +1,6 @@
 use std::net::{SocketAddr, ToSocketAddrs};
 
+use futures::{stream::FuturesUnordered, StreamExt};
 use tokio::{io::AsyncWriteExt, net::TcpStream, time::Instant};
 
 /// Desired behaviour for how a socket should be written to.
@@ -14,6 +15,8 @@ pub enum WriteOptions {
     CountOrDuration(u64, humantime::Duration),
     /// Write a concurrent number of streams up to a particular count.
     ConcurrencyWithCount(u64, u64),
+    /// Write a concurrent number of streams for a set duration.
+    ConcurrencyWithDuration(u64, humantime::Duration),
 }
 
 impl WriteOptions {
@@ -28,7 +31,7 @@ impl WriteOptions {
             (Some(d), None) if count > 1 => WriteOptions::CountOrDuration(count, d),
             (Some(d), None) => WriteOptions::Duration(d),
             (None, Some(c)) => WriteOptions::ConcurrencyWithCount(c, count),
-            (Some(_d), Some(_c)) => todo!(),
+            (Some(d), Some(c)) => WriteOptions::ConcurrencyWithDuration(c, d),
             (None, None) => WriteOptions::Count(count),
         }
     }
@@ -113,6 +116,28 @@ where
                     }
                     for task in tasks {
                         self.bytes_written += task.await?;
+                    }
+                }
+                WriteOptions::ConcurrencyWithDuration(concurrency, duration) => {
+                    let mut futs = FuturesUnordered::new();
+                    for _ in 0..concurrency {
+                        let input = self.input.to_owned();
+                        let task = tokio::spawn(async move {
+                            let for_duration = Instant::now();
+                            let mut task_bytes = 0;
+                            loop {
+                                if for_duration.elapsed() >= *duration {
+                                    break;
+                                } else {
+                                    task_bytes += write_stream(addr, &input).await.unwrap();
+                                }
+                            }
+                            task_bytes
+                        });
+                        futs.push(task);
+                    }
+                    while let Some(task) = futs.next().await {
+                        self.bytes_written += task?;
                     }
                 }
             }
@@ -259,6 +284,37 @@ mod test {
         let mut s = StreamWriter::new(addr, input, WriteOptions::ConcurrencyWithCount(5, 100_000));
 
         assert_eq!(s.write().await.unwrap(), 100_000);
+        println!("Wrote {} bytes per second", s.throughput());
+    }
+
+    #[tokio::test]
+    async fn write_concurrency_with_duration() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        tokio::spawn(async move {
+            loop {
+                listener.accept().await.unwrap();
+            }
+        });
+
+        let input = b"concurrent_duration";
+        let duration = humantime::Duration::from_str("2s").unwrap();
+        let mut s = StreamWriter::new(
+            addr,
+            input,
+            WriteOptions::ConcurrencyWithDuration(10, duration),
+        );
+
+        let start = Instant::now();
+        s.write().await.unwrap();
+        let elapsed = start.elapsed().as_secs();
+        assert_eq!(elapsed, 2);
+        assert!(s.throughput() > 0.0);
+        assert!(
+            s.bytes_written > input.len() as u64 * 1000,
+            "More than 1000 requests should be sent"
+        );
         println!("Wrote {} bytes per second", s.throughput());
     }
 
