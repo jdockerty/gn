@@ -1,7 +1,11 @@
 [package]
 name = "gn"
+description = "TCP tool for grugs"
 version = "0.1.0"
 edition = "2021"
+readme = "README.md"
+repository = "https://github.com/jdockerty/gn"
+authors = ["Jack Dockerty"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
