@@ -1,7 +1,7 @@
+mod manager;
 mod server;
-mod writer;
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
+pub use manager::{SocketManager, WriteOptions};
 pub use server::Server;
-pub use writer::{StreamWriter, WriteOptions};
