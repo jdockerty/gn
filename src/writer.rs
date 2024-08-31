@@ -208,6 +208,15 @@ mod test {
         opts = WriteOptions::from_flags(100, None, Some(10)),
         expected = WriteOptions::ConcurrencyWithCount(10, 100)
     );
+    write_options!(
+        from_flags_concurrency_duration,
+        opts = WriteOptions::from_flags(
+            1,
+            Some(humantime::Duration::from_str("10s").unwrap()),
+            Some(10)
+        ),
+        expected = WriteOptions::ConcurrencyWithDuration(10, _)
+    );
 
     /// Encompass the count variant of the write options into a macro for ease of
     /// use of testing various scenarios
