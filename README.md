@@ -2,7 +2,7 @@
 
 _grug-net (gn)_
 
-A TCP tool for grugs.
+A TCP/UDP tool for grugs.
 
 ## Install
 

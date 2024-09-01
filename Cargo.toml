@@ -1,6 +1,6 @@
 [package]
 name = "gn"
-description = "TCP tool for grugs"
+description = "TCP/UDP tool for grugs"
 version = "0.1.0"
 edition = "2021"
 readme = "README.md"
