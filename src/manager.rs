@@ -1,7 +1,13 @@
 use std::net::{SocketAddr, ToSocketAddrs};
 
 use futures::{stream::FuturesUnordered, StreamExt};
-use tokio::{io::AsyncWriteExt, net::TcpStream, time::Instant};
+use tokio::{
+    io::AsyncWriteExt,
+    net::{TcpStream, UdpSocket},
+    time::Instant,
+};
+
+use crate::Protocol;
 
 /// Desired behaviour for how a socket should be written to.
 #[derive(Debug)]
@@ -42,6 +48,7 @@ pub struct SocketManager<'a, S: ToSocketAddrs> {
     input: &'a [u8],
     bytes_written: u64,
     throughput: f64,
+    protocol: Protocol,
     write_options: WriteOptions,
 }
 
@@ -49,11 +56,12 @@ impl<'a, S> SocketManager<'a, S>
 where
     S: ToSocketAddrs + Sync,
 {
-    pub fn new(host: S, input: &'a [u8], write_options: WriteOptions) -> Self {
+    pub fn new(host: S, input: &'a [u8], protocol: Protocol, write_options: WriteOptions) -> Self {
         Self {
             host,
             input,
             write_options,
+            protocol,
             bytes_written: 0,
             throughput: 0.0,
         }
@@ -75,7 +83,8 @@ where
             match self.write_options {
                 WriteOptions::Count(count) => {
                     for _ in 0..count {
-                        self.bytes_written += write_stream(addr, self.input).await?;
+                        self.bytes_written +=
+                            write_stream(addr, &self.protocol, self.input).await?;
                     }
                 }
                 WriteOptions::Duration(duration) => {
@@ -84,7 +93,8 @@ where
                         if for_duration.elapsed() >= *duration {
                             break;
                         } else {
-                            self.bytes_written += write_stream(addr, self.input).await?;
+                            self.bytes_written +=
+                                write_stream(addr, &self.protocol, self.input).await?;
                         }
                     }
                 }
@@ -95,7 +105,8 @@ where
                         if sent == count || for_duration.elapsed() >= *duration {
                             break;
                         } else {
-                            self.bytes_written += write_stream(addr, self.input).await?;
+                            self.bytes_written +=
+                                write_stream(addr, &self.protocol, self.input).await?;
                             sent += 1;
                         }
                     }
@@ -105,10 +116,13 @@ where
                     let requests_per_task = count / concurrency;
                     for _ in 0..concurrency {
                         let input = self.input.to_owned();
+                        let protocol = self.protocol.clone();
                         let task = tokio::spawn(async move {
                             let mut task_bytes = 0;
                             for _ in 0..requests_per_task {
-                                task_bytes += write_stream(addr, input.as_slice()).await.unwrap();
+                                task_bytes += write_stream(addr, &protocol, input.as_slice())
+                                    .await
+                                    .unwrap();
                             }
                             task_bytes
                         });
@@ -122,6 +136,7 @@ where
                     let mut futs = FuturesUnordered::new();
                     for _ in 0..concurrency {
                         let input = self.input.to_owned();
+                        let protocol = self.protocol.clone();
                         let task = tokio::spawn(async move {
                             let for_duration = Instant::now();
                             let mut task_bytes = 0;
@@ -129,7 +144,8 @@ where
                                 if for_duration.elapsed() >= *duration {
                                     break;
                                 } else {
-                                    task_bytes += write_stream(addr, &input).await.unwrap();
+                                    task_bytes +=
+                                        write_stream(addr, &protocol, &input).await.unwrap();
                                 }
                             }
                             task_bytes
@@ -157,10 +173,21 @@ where
     }
 }
 
-/// Write the provided input data to a [`SocketAddr`].
-async fn write_stream(addr: SocketAddr, input: &[u8]) -> crate::Result<u64> {
-    let mut stream = TcpStream::connect(addr).await?;
-    stream.write_all(input).await?;
+/// Write the provided input data to a [`SocketAddr`] using the chosen [`Protocol`].
+async fn write_stream(addr: SocketAddr, protocol: &Protocol, input: &[u8]) -> crate::Result<u64> {
+    match protocol {
+        Protocol::Tcp => {
+            let mut stream = TcpStream::connect(addr).await?;
+            stream.write_all(input).await?;
+        }
+        Protocol::Udp => {
+            // Binding to 0 mimics the functionality of an unspecified socket.
+            // It simply assigns a random port for the UDP socket to begin writing.
+            // Ref: https://man7.org/linux/man-pages/man7/udp.7.html
+            let stream = UdpSocket::bind("127.0.0.1:0").await?;
+            stream.send_to(input, addr).await?;
+        }
+    }
     Ok(input.len() as u64)
 }
 
