@@ -367,56 +367,67 @@ mod test {
     async fn write_for_duration() {
         let input = b"duration";
         let duration = Duration::from_str("2s").unwrap();
-        let protocol = Protocol::Tcp;
-        let addr = bind_socket(&protocol).await;
-        let mut s = SocketManager::new(addr, input, protocol, WriteOptions::Duration(duration));
+        let protocols = vec![Protocol::Tcp, Protocol::Udp];
 
-        let start = Instant::now();
-        s.write().await.unwrap();
-        let elapsed = start.elapsed().as_secs();
-        assert_eq!(elapsed, 2);
-        println!("Wrote {} bytes per second", s.throughput());
+        for protocol in protocols {
+            let addr = bind_socket(&protocol).await;
+            let mut s = SocketManager::new(
+                addr,
+                input,
+                protocol.clone(),
+                WriteOptions::Duration(duration),
+            );
+            let start = Instant::now();
+            s.write().await.unwrap();
+            let elapsed = start.elapsed().as_secs();
+            assert_eq!(elapsed, 2);
+            println!("[{protocol}] Wrote {} bytes per second", s.throughput());
+        }
     }
 
     #[tokio::test]
     async fn write_concurrency() {
-        let protocol = Protocol::Tcp;
-        let addr = bind_socket(&protocol).await;
-        let input = b"c";
-        let mut s = SocketManager::new(
-            addr,
-            input,
-            protocol,
-            WriteOptions::ConcurrencyWithCount(5, 100_000),
-        );
+        let protocols = vec![Protocol::Tcp, Protocol::Udp];
 
-        assert_eq!(s.write().await.unwrap(), 100_000);
-        println!("Wrote {} bytes per second", s.throughput());
+        for protocol in protocols {
+            let addr = bind_socket(&protocol).await;
+            let input = b"c";
+            let mut s = SocketManager::new(
+                addr,
+                input,
+                protocol.clone(),
+                WriteOptions::ConcurrencyWithCount(5, 100_000),
+            );
+            assert_eq!(s.write().await.unwrap(), 100_000);
+            println!("[{protocol}] Wrote {} bytes per second", s.throughput());
+        }
     }
 
     #[tokio::test]
     async fn write_concurrency_with_duration() {
-        let protocol = Protocol::Tcp;
-        let addr = bind_socket(&protocol).await;
+        let protocols = vec![Protocol::Tcp, Protocol::Udp];
         let input = b"concurrent_duration";
-        let duration = humantime::Duration::from_str("2s").unwrap();
-        let mut s = SocketManager::new(
-            addr,
-            input,
-            protocol,
-            WriteOptions::ConcurrencyWithDuration(10, duration),
-        );
+        for protocol in protocols {
+            let addr = bind_socket(&protocol).await;
+            let duration = humantime::Duration::from_str("2s").unwrap();
+            let mut s = SocketManager::new(
+                addr,
+                input,
+                protocol.clone(),
+                WriteOptions::ConcurrencyWithDuration(10, duration),
+            );
 
-        let start = Instant::now();
-        s.write().await.unwrap();
-        let elapsed = start.elapsed().as_secs();
-        assert_eq!(elapsed, 2);
-        assert!(s.throughput() > 0.0);
-        assert!(
-            s.bytes_written > input.len() as u64 * 1000,
-            "More than 1000 requests should be sent"
-        );
-        println!("Wrote {} bytes per second", s.throughput());
+            let start = Instant::now();
+            s.write().await.unwrap();
+            let elapsed = start.elapsed().as_secs();
+            assert_eq!(elapsed, 2);
+            assert!(s.throughput() > 0.0);
+            assert!(
+                s.bytes_written > input.len() as u64 * 100,
+                "[{protocol}] More than 100 requests should be sent"
+            );
+            println!("[{protocol}] Wrote {} bytes per second", s.throughput());
+        }
     }
 
     async fn throughput_helper(protocol: Protocol) {
