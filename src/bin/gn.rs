@@ -46,6 +46,9 @@ enum Commands {
     Serve {
         #[arg(long, default_value = "127.0.0.1:5000")]
         address: SocketAddr,
+
+        #[arg(long, short, default_value = "tcp")]
+        protocol: Protocol,
     },
 }
 
@@ -69,8 +72,8 @@ async fn main() -> gn::Result<()> {
             writeln!(out, "Wrote {wrote} bytes")?;
             writeln!(out, "Bytes per second {throughput}")?;
         }
-        Commands::Serve { address } => {
-            let mut server = Server::new(address, out);
+        Commands::Serve { address, protocol } => {
+            let mut server = Server::new(address, protocol, out);
             server.serve().await?;
         }
     };
