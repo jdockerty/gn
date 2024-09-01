@@ -13,7 +13,7 @@ struct App {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Write data over a TCP socket.
+    /// Write data over a socket.
     Write {
         #[arg(long)]
         host: SocketAddr,
@@ -21,7 +21,7 @@ enum Commands {
         #[arg(long, short, default_value = "tcp")]
         protocol: Protocol,
 
-        /// Input data to be written to the TCP socket.
+        /// Input data to be written to the socket.
         ///
         /// Defaults to reading from stdin when unspecified.
         #[clap(default_value = "-")]
@@ -42,7 +42,7 @@ enum Commands {
         #[clap(long)]
         concurrency: Option<u64>,
     },
-    /// Start a TCP server
+    /// Start a server, listening for a specified protocol.
     Serve {
         #[arg(long, default_value = "127.0.0.1:5000")]
         address: SocketAddr,

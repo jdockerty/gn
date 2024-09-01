@@ -164,7 +164,7 @@ where
     }
 
     /// Retrieve the perceived bytes per second throughput that was written to
-    /// the TCP sockets.
+    /// the sockets.
     ///
     /// NOTE: Owing to truncation from nanosecond precision to seconds, the
     /// produced throughput may not be accurate for low write counts.
