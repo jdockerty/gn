@@ -14,7 +14,7 @@ impl From<&str> for Protocol {
         match value {
             "tcp" | "TCP" => Self::Tcp,
             "udp" | "UDP" => Self::Udp,
-            _ => panic!("unsupported connection type: {value}"),
+            _ => panic!("unsupported protocol: {value}"),
         }
     }
 }
