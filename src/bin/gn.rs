@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 
 use clap::{Parser, Subcommand};
 use clap_stdin::MaybeStdin;
-use gn::{Server, SocketManager, WriteOptions};
+use gn::{Protocol, Server, SocketManager, WriteOptions};
 
 #[derive(Parser)]
 struct App {
@@ -17,6 +17,9 @@ enum Commands {
     Write {
         #[arg(long)]
         host: SocketAddr,
+
+        #[arg(long, short, default_value = "tcp")]
+        protocol: Protocol,
 
         /// Input data to be written to the TCP socket.
         ///
@@ -43,6 +46,9 @@ enum Commands {
     Serve {
         #[arg(long, default_value = "127.0.0.1:5000")]
         address: SocketAddr,
+
+        #[arg(long, short, default_value = "tcp")]
+        protocol: Protocol,
     },
 }
 
@@ -57,16 +63,17 @@ async fn main() -> gn::Result<()> {
             count,
             duration,
             concurrency,
+            protocol,
         } => {
             let opts = WriteOptions::from_flags(count, duration, concurrency);
-            let mut writer = SocketManager::new(host, input.as_bytes(), opts);
+            let mut writer = SocketManager::new(host, input.as_bytes(), protocol, opts);
             let wrote = writer.write().await?;
             let throughput = writer.throughput();
             writeln!(out, "Wrote {wrote} bytes")?;
             writeln!(out, "Bytes per second {throughput}")?;
         }
-        Commands::Serve { address } => {
-            let mut server = Server::new(address, out);
+        Commands::Serve { address, protocol } => {
+            let mut server = Server::new(address, protocol, out);
             server.serve().await?;
         }
     };
