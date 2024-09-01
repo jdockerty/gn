@@ -197,7 +197,7 @@ mod test {
 
     use humantime::Duration;
 
-    use crate::{manager::WriteOptions, SocketManager};
+    use crate::{manager::WriteOptions, Protocol, SocketManager};
 
     macro_rules! write_options {
         ($name:ident, opts = $opts:expr, expected = $expected:pat) => {
@@ -248,13 +248,14 @@ mod test {
     /// Encompass the count variant of the write options into a macro for ease of
     /// use of testing various scenarios
     macro_rules! write_count {
-        ($name:ident, input = $input:expr, count = $count:expr, expected = $expected:expr) => {
+        ($name:ident, input = $input:expr, protocol = $protocol:expr, count = $count:expr, expected = $expected:expr) => {
             #[tokio::test]
             async fn $name() {
                 let listener = TcpListener::bind("127.0.0.1:0").unwrap();
                 let mut s = SocketManager::new(
                     listener.local_addr().unwrap(),
                     $input,
+                    $protocol,
                     WriteOptions::Count($count),
                 );
                 assert_eq!(s.write().await.unwrap(), $expected);
@@ -262,18 +263,73 @@ mod test {
         };
     }
 
-    write_count!(write_single, input = b"hello", count = 1, expected = 5);
-    write_count!(write_multiple, input = b"hello", count = 5, expected = 25);
     write_count!(
-        write_large,
+        write_single_tcp,
+        input = b"hello",
+        protocol = Protocol::Tcp,
+        count = 1,
+        expected = 5
+    );
+    write_count!(
+        write_single_udp,
+        input = b"hello",
+        protocol = Protocol::Udp,
+        count = 1,
+        expected = 5
+    );
+    write_count!(
+        write_multiple_tcp,
+        input = b"hello",
+        protocol = Protocol::Tcp,
+        count = 5,
+        expected = 25
+    );
+    write_count!(
+        write_multiple_udp,
+        input = b"hello",
+        protocol = Protocol::Udp,
+        count = 5,
+        expected = 25
+    );
+    write_count!(
+        write_large_tcp,
         input = b"wow-there's-a-lot-of-text-here",
+        protocol = Protocol::Tcp,
         count = 3,
         expected = 90
     );
-    write_count!(write_tiny, input = b"a", count = 1, expected = 1);
     write_count!(
-        write_tiny_multiple,
+        write_large_udp,
+        input = b"wow-there's-a-lot-of-text-here",
+        protocol = Protocol::Udp,
+        count = 3,
+        expected = 90
+    );
+    write_count!(
+        write_tiny_tcp,
         input = b"a",
+        protocol = Protocol::Tcp,
+        count = 1,
+        expected = 1
+    );
+    write_count!(
+        write_tiny_udp,
+        input = b"a",
+        protocol = Protocol::Udp,
+        count = 1,
+        expected = 1
+    );
+    write_count!(
+        write_tiny_multiple_tcp,
+        input = b"a",
+        protocol = Protocol::Tcp,
+        count = 100,
+        expected = 100
+    );
+    write_count!(
+        write_tiny_multiple_udp,
+        input = b"a",
+        protocol = Protocol::Udp,
         count = 100,
         expected = 100
     );
@@ -296,7 +352,8 @@ mod test {
 
         let input = b"duration";
         let duration = Duration::from_str("2s").unwrap();
-        let mut s = SocketManager::new(addr, input, WriteOptions::Duration(duration));
+        let mut s =
+            SocketManager::new(addr, input, Protocol::Tcp, WriteOptions::Duration(duration));
 
         let start = Instant::now();
         s.write().await.unwrap();
@@ -317,7 +374,12 @@ mod test {
         });
 
         let input = b"c";
-        let mut s = SocketManager::new(addr, input, WriteOptions::ConcurrencyWithCount(5, 100_000));
+        let mut s = SocketManager::new(
+            addr,
+            input,
+            Protocol::Tcp,
+            WriteOptions::ConcurrencyWithCount(5, 100_000),
+        );
 
         assert_eq!(s.write().await.unwrap(), 100_000);
         println!("Wrote {} bytes per second", s.throughput());
@@ -339,6 +401,7 @@ mod test {
         let mut s = SocketManager::new(
             addr,
             input,
+            Protocol::Tcp,
             WriteOptions::ConcurrencyWithDuration(10, duration),
         );
 
@@ -361,6 +424,7 @@ mod test {
         let mut s = SocketManager::new(
             listener.local_addr().unwrap(),
             b"a",
+            Protocol::Tcp,
             WriteOptions::Count(100),
         );
         s.write().await.unwrap();
