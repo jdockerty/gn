@@ -60,10 +60,10 @@ async fn main() -> gn::Result<()> {
             count,
             duration,
             concurrency,
-            protocol: _,
+            protocol,
         } => {
             let opts = WriteOptions::from_flags(count, duration, concurrency);
-            let mut writer = SocketManager::new(host, input.as_bytes(), opts);
+            let mut writer = SocketManager::new(host, input.as_bytes(), protocol, opts);
             let wrote = writer.write().await?;
             let throughput = writer.throughput();
             writeln!(out, "Wrote {wrote} bytes")?;
