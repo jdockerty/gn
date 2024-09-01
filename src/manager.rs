@@ -419,16 +419,19 @@ mod test {
         println!("Wrote {} bytes per second", s.throughput());
     }
 
-    #[tokio::test]
-    async fn throughput() {
-        let protocol = Protocol::Tcp;
+    async fn throughput_helper(protocol: Protocol) {
         let addr = bind_socket(&protocol).await;
-
-        let mut s = SocketManager::new(addr, b"a", protocol, WriteOptions::Count(100));
+        let mut s = SocketManager::new(addr, b"a", protocol.clone(), WriteOptions::Count(100));
         s.write().await.unwrap();
         assert!(
             s.throughput() != 0.0,
-            "Throughput should be set after writing data"
+            "Throughput should be set after writing {protocol} data"
         );
+    }
+
+    #[tokio::test]
+    async fn throughput() {
+        throughput_helper(Protocol::Tcp).await;
+        throughput_helper(Protocol::Udp).await;
     }
 }
