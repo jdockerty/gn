@@ -193,7 +193,11 @@ async fn write_stream(addr: SocketAddr, protocol: &Protocol, input: &[u8]) -> cr
 
 #[cfg(test)]
 mod test {
-    use std::{net::TcpListener, str::FromStr, time::Instant};
+    use std::{
+        net::{SocketAddr, TcpListener},
+        str::FromStr,
+        time::Instant,
+    };
 
     use humantime::Duration;
 
@@ -334,26 +338,38 @@ mod test {
         expected = 100
     );
 
+    async fn bind_socket(protocol: &Protocol) -> SocketAddr {
+        match protocol {
+            Protocol::Tcp => {
+                // Use a tokio listener to not block the runtime so that we can accept
+                // the incoming connections. When writing for a duration the backlog of
+                // the listen syscall can fill up, so we must accept the incoming connections,
+                // even if they are discarded, otherwise the test can come to a halt.
+                // See backlog parameter from https://man7.org/linux/man-pages/man2/listen.2.html
+                let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                let addr = listener.local_addr().unwrap();
+
+                tokio::spawn(async move {
+                    loop {
+                        listener.accept().await.unwrap();
+                    }
+                });
+                addr
+            }
+            Protocol::Udp => {
+                let socket = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+                socket.local_addr().unwrap()
+            }
+        }
+    }
+
     #[tokio::test]
     async fn write_for_duration() {
-        // Use a tokio listener to not block the runtime so that we can accept
-        // the incoming connections. When writing for a duration the backlog of
-        // the listen syscall can fill up, so we must accept the incoming connections,
-        // even if they are discarded, otherwise the test can come to a halt.
-        // See backlog parameter from https://man7.org/linux/man-pages/man2/listen.2.html
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-
-        tokio::spawn(async move {
-            loop {
-                listener.accept().await.unwrap();
-            }
-        });
-
         let input = b"duration";
         let duration = Duration::from_str("2s").unwrap();
-        let mut s =
-            SocketManager::new(addr, input, Protocol::Tcp, WriteOptions::Duration(duration));
+        let protocol = Protocol::Tcp;
+        let addr = bind_socket(&protocol).await;
+        let mut s = SocketManager::new(addr, input, protocol, WriteOptions::Duration(duration));
 
         let start = Instant::now();
         s.write().await.unwrap();
@@ -364,20 +380,13 @@ mod test {
 
     #[tokio::test]
     async fn write_concurrency() {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-
-        tokio::spawn(async move {
-            loop {
-                listener.accept().await.unwrap();
-            }
-        });
-
+        let protocol = Protocol::Tcp;
+        let addr = bind_socket(&protocol).await;
         let input = b"c";
         let mut s = SocketManager::new(
             addr,
             input,
-            Protocol::Tcp,
+            protocol,
             WriteOptions::ConcurrencyWithCount(5, 100_000),
         );
 
@@ -387,21 +396,14 @@ mod test {
 
     #[tokio::test]
     async fn write_concurrency_with_duration() {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-
-        tokio::spawn(async move {
-            loop {
-                listener.accept().await.unwrap();
-            }
-        });
-
+        let protocol = Protocol::Tcp;
+        let addr = bind_socket(&protocol).await;
         let input = b"concurrent_duration";
         let duration = humantime::Duration::from_str("2s").unwrap();
         let mut s = SocketManager::new(
             addr,
             input,
-            Protocol::Tcp,
+            protocol,
             WriteOptions::ConcurrencyWithDuration(10, duration),
         );
 
@@ -419,14 +421,10 @@ mod test {
 
     #[tokio::test]
     async fn throughput() {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let protocol = Protocol::Tcp;
+        let addr = bind_socket(&protocol).await;
 
-        let mut s = SocketManager::new(
-            listener.local_addr().unwrap(),
-            b"a",
-            Protocol::Tcp,
-            WriteOptions::Count(100),
-        );
+        let mut s = SocketManager::new(addr, b"a", protocol, WriteOptions::Count(100));
         s.write().await.unwrap();
         assert!(
             s.throughput() != 0.0,
