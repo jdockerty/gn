@@ -1,8 +1,6 @@
 # gn
 
-_grug-net (gn)_
-
-A TCP/UDP tool for grugs.
+A TCP/UDP tool like `nc`, but way dumber.
 
 ## Install
 
