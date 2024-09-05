@@ -71,12 +71,12 @@ async fn main() -> gn::Result<()> {
             stats,
         } => {
             let opts = WriteOptions::from_flags(count, duration, concurrency);
-            let mut writer = SocketManager::new(host, input.as_bytes(), protocol, opts);
-            let wrote = writer.write().await?;
+            let mut manager = SocketManager::new(host, input.as_bytes(), protocol, opts);
+            manager.write().await?;
+
             if stats {
-                let throughput = writer.throughput();
-                writeln!(out, "Wrote {wrote} bytes")?;
-                writeln!(out, "Bytes per second {throughput}")?;
+                writeln!(out, "Wrote {} bytes", manager.total_bytes())?;
+                writeln!(out, "Bytes per second {}", manager.throughput())?;
             }
         }
         Commands::Serve { address, protocol } => {

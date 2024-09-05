@@ -165,6 +165,10 @@ where
     pub fn throughput(&self) -> f64 {
         self.stats.throughput()
     }
+
+    pub fn total_bytes(&self) -> u64 {
+        self.stats.total_bytes()
+    }
 }
 
 /// Write the provided input data to a [`SocketAddr`] using the chosen [`Protocol`].
