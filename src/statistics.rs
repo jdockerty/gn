@@ -6,6 +6,12 @@ pub struct Statistics {
     throughput: f64,
 }
 
+impl Default for Statistics {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Statistics {
     pub fn new() -> Self {
         Self {

@@ -61,7 +61,7 @@ where
             input,
             write_options,
             protocol,
-            stats: Statistics::new(),
+            stats: Statistics::default(),
         }
     }
 
