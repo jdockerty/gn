@@ -55,6 +55,7 @@ impl<'a, S> SocketManager<'a, S>
 where
     S: ToSocketAddrs + Sync,
 {
+    /// Create a new [`SocketManager`]
     pub fn new(host: S, input: &'a [u8], protocol: Protocol, write_options: WriteOptions) -> Self {
         Self {
             host,
@@ -162,10 +163,12 @@ where
         Ok(self.stats.total_bytes())
     }
 
+    /// Get the recorded throughput from the internal [`Statistics`].
     pub fn throughput(&self) -> f64 {
         self.stats.throughput()
     }
 
+    /// Get the total number of bytes from the internal [`Statistics`].
     pub fn total_bytes(&self) -> u64 {
         self.stats.total_bytes()
     }

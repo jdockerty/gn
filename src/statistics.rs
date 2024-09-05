@@ -21,10 +21,12 @@ impl Statistics {
         }
     }
 
+    /// Increment the total number of bytes written
     pub fn increment_total(&mut self, inc: u64) {
         self.total_bytes += inc
     }
 
+    /// Get the total number of bytes written
     pub fn total_bytes(&self) -> u64 {
         self.total_bytes
     }
