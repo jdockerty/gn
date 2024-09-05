@@ -41,6 +41,10 @@ enum Commands {
         /// Number of concurrent requests to send.
         #[clap(long)]
         concurrency: Option<u64>,
+
+        /// Display statistics about writes
+        #[clap(long)]
+        stats: bool,
     },
     /// Start a server, listening for a specified protocol.
     Serve {
@@ -64,13 +68,16 @@ async fn main() -> gn::Result<()> {
             duration,
             concurrency,
             protocol,
+            stats,
         } => {
             let opts = WriteOptions::from_flags(count, duration, concurrency);
             let mut writer = SocketManager::new(host, input.as_bytes(), protocol, opts);
             let wrote = writer.write().await?;
-            let throughput = writer.throughput();
-            writeln!(out, "Wrote {wrote} bytes")?;
-            writeln!(out, "Bytes per second {throughput}")?;
+            if stats {
+                let throughput = writer.throughput();
+                writeln!(out, "Wrote {wrote} bytes")?;
+                writeln!(out, "Bytes per second {throughput}")?;
+            }
         }
         Commands::Serve { address, protocol } => {
             let mut server = Server::new(address, protocol, out);
