@@ -3,27 +3,47 @@ use std::time::Instant;
 pub struct Statistics {
     start_time: Instant,
     total_bytes: u64,
+    max_count: u64,
+    success_count: u64,
+    #[allow(dead_code)] // TODO
+    failure_count: u64,
     throughput: f64,
 }
 
 impl Default for Statistics {
     fn default() -> Self {
-        Self::new()
+        Self::new(1)
     }
 }
 
 impl Statistics {
-    pub fn new() -> Self {
+    pub fn new(max_count: u64) -> Self {
         Self {
             start_time: Instant::now(),
             total_bytes: 0,
+            success_count: 0,
+            failure_count: 0,
             throughput: 0.0,
+            max_count,
         }
     }
 
     /// Increment the total number of bytes written
     pub fn increment_total(&mut self, inc: u64) {
         self.total_bytes += inc
+    }
+
+    /// Increment the total number of bytes written
+    pub fn increment_successful_request(&mut self) {
+        self.success_count += 1;
+    }
+
+    pub fn successful_requests(&self) -> u64 {
+        self.success_count
+    }
+
+    pub fn success_percentage(&self) -> f64 {
+        (self.success_count / self.max_count) as f64 * 100.0
     }
 
     /// Get the total number of bytes written
