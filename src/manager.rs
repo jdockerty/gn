@@ -7,7 +7,7 @@ use tokio::{
     time::Instant,
 };
 
-use crate::Protocol;
+use crate::{statistics::Statistics, Protocol};
 
 /// Desired behaviour for how a socket should be written to.
 #[derive(Debug)]
@@ -46,24 +46,23 @@ impl WriteOptions {
 pub struct SocketManager<'a, S: ToSocketAddrs> {
     host: S,
     input: &'a [u8],
-    bytes_written: u64,
-    throughput: f64,
     protocol: Protocol,
     write_options: WriteOptions,
+    stats: Statistics,
 }
 
 impl<'a, S> SocketManager<'a, S>
 where
     S: ToSocketAddrs + Sync,
 {
+    /// Create a new [`SocketManager`]
     pub fn new(host: S, input: &'a [u8], protocol: Protocol, write_options: WriteOptions) -> Self {
         Self {
             host,
             input,
             write_options,
             protocol,
-            bytes_written: 0,
-            throughput: 0.0,
+            stats: Statistics::default(),
         }
     }
 
@@ -78,13 +77,12 @@ where
             .host
             .to_socket_addrs()
             .expect("Valid socket addresses are provided");
-        let start = Instant::now();
         for addr in addrs {
             match self.write_options {
                 WriteOptions::Count(count) => {
                     for _ in 0..count {
-                        self.bytes_written +=
-                            write_stream(addr, &self.protocol, self.input).await?;
+                        self.stats
+                            .increment_total(write_stream(addr, &self.protocol, self.input).await?);
                     }
                 }
                 WriteOptions::Duration(duration) => {
@@ -93,8 +91,9 @@ where
                         if for_duration.elapsed() >= *duration {
                             break;
                         } else {
-                            self.bytes_written +=
-                                write_stream(addr, &self.protocol, self.input).await?;
+                            self.stats.increment_total(
+                                write_stream(addr, &self.protocol, self.input).await?,
+                            );
                         }
                     }
                 }
@@ -105,8 +104,9 @@ where
                         if sent == count || for_duration.elapsed() >= *duration {
                             break;
                         } else {
-                            self.bytes_written +=
-                                write_stream(addr, &self.protocol, self.input).await?;
+                            self.stats.increment_total(
+                                write_stream(addr, &self.protocol, self.input).await?,
+                            );
                             sent += 1;
                         }
                     }
@@ -129,7 +129,7 @@ where
                         futs.push(task);
                     }
                     while let Some(task) = futs.next().await {
-                        self.bytes_written += task?;
+                        self.stats.increment_total(task?);
                     }
                 }
                 WriteOptions::ConcurrencyWithDuration(concurrency, duration) => {
@@ -153,23 +153,24 @@ where
                         futs.push(task);
                     }
                     while let Some(task) = futs.next().await {
-                        self.bytes_written += task?;
+                        self.stats.increment_total(task?);
                     }
                 }
             }
         }
 
-        self.throughput = self.bytes_written as f64 / start.elapsed().as_secs() as f64;
-        Ok(self.bytes_written)
+        self.stats.record_throughput();
+        Ok(self.stats.total_bytes())
     }
 
-    /// Retrieve the perceived bytes per second throughput that was written to
-    /// the sockets.
-    ///
-    /// NOTE: Owing to truncation from nanosecond precision to seconds, the
-    /// produced throughput may not be accurate for low write counts.
+    /// Get the recorded throughput from the internal [`Statistics`].
     pub fn throughput(&self) -> f64 {
-        self.throughput
+        self.stats.throughput()
+    }
+
+    /// Get the total number of bytes from the internal [`Statistics`].
+    pub fn total_bytes(&self) -> u64 {
+        self.stats.total_bytes()
     }
 }
 
@@ -423,7 +424,7 @@ mod test {
             assert_eq!(elapsed, 2);
             assert!(s.throughput() > 0.0);
             assert!(
-                s.bytes_written > input.len() as u64 * 100,
+                s.stats.total_bytes() > input.len() as u64 * 100,
                 "[{protocol}] More than 100 requests should be sent"
             );
             println!("[{protocol}] Wrote {} bytes per second", s.throughput());
