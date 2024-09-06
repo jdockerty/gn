@@ -56,13 +56,19 @@ where
     S: ToSocketAddrs + Sync,
 {
     /// Create a new [`SocketManager`]
-    pub fn new(host: S, input: &'a [u8], protocol: Protocol, write_options: WriteOptions) -> Self {
+    pub fn new(
+        host: S,
+        input: &'a [u8],
+        protocol: Protocol,
+        write_options: WriteOptions,
+        stats: Statistics,
+    ) -> Self {
         Self {
             host,
             input,
             write_options,
             protocol,
-            stats: Statistics::default(),
+            stats,
         }
     }
 
@@ -83,6 +89,7 @@ where
                     for _ in 0..count {
                         self.stats
                             .increment_total(write_stream(addr, &self.protocol, self.input).await?);
+                        self.stats.increment_successful_request();
                     }
                 }
                 WriteOptions::Duration(duration) => {
@@ -94,6 +101,7 @@ where
                             self.stats.increment_total(
                                 write_stream(addr, &self.protocol, self.input).await?,
                             );
+                            self.stats.increment_successful_request();
                         }
                     }
                 }
@@ -108,6 +116,7 @@ where
                                 write_stream(addr, &self.protocol, self.input).await?,
                             );
                             sent += 1;
+                            self.stats.increment_successful_request();
                         }
                     }
                 }
@@ -119,17 +128,23 @@ where
                         let protocol = self.protocol.clone();
                         let task = tokio::spawn(async move {
                             let mut task_bytes = 0;
+                            let mut success: u64 = 0;
                             for _ in 0..requests_per_task {
                                 task_bytes += write_stream(addr, &protocol, input.as_slice())
                                     .await
                                     .unwrap();
+                                success += 1;
                             }
-                            task_bytes
+                            (task_bytes, success)
                         });
                         futs.push(task);
                     }
                     while let Some(task) = futs.next().await {
-                        self.stats.increment_total(task?);
+                        let (written, success_count) = task?;
+                        self.stats.increment_total(written);
+                        for _ in 0..success_count {
+                            self.stats.increment_successful_request();
+                        }
                     }
                 }
                 WriteOptions::ConcurrencyWithDuration(concurrency, duration) => {
@@ -140,20 +155,26 @@ where
                         let task = tokio::spawn(async move {
                             let for_duration = Instant::now();
                             let mut task_bytes = 0;
+                            let mut success: u64 = 0;
                             loop {
                                 if for_duration.elapsed() >= *duration {
                                     break;
                                 } else {
                                     task_bytes +=
                                         write_stream(addr, &protocol, &input).await.unwrap();
+                                    success += 1;
                                 }
                             }
-                            task_bytes
+                            (task_bytes, success)
                         });
                         futs.push(task);
                     }
                     while let Some(task) = futs.next().await {
-                        self.stats.increment_total(task?);
+                        let (written, success_count) = task?;
+                        self.stats.increment_total(written);
+                        for _ in 0..success_count {
+                            self.stats.increment_successful_request();
+                        }
                     }
                 }
             }
@@ -171,6 +192,16 @@ where
     /// Get the total number of bytes from the internal [`Statistics`].
     pub fn total_bytes(&self) -> u64 {
         self.stats.total_bytes()
+    }
+
+    /// The number of successful requests.
+    pub fn successful_requests(&self) -> u64 {
+        self.stats.successful_requests()
+    }
+
+    /// Percentage of requests that were successful.
+    pub fn successful_requests_percentage(&self) -> f64 {
+        self.stats.success_percentage()
     }
 }
 
@@ -202,7 +233,7 @@ mod test {
 
     use humantime::Duration;
 
-    use crate::{manager::WriteOptions, Protocol, SocketManager};
+    use crate::{manager::WriteOptions, statistics::Statistics, Protocol, SocketManager};
 
     macro_rules! write_options {
         ($name:ident, opts = $opts:expr, expected = $expected:pat) => {
@@ -262,6 +293,7 @@ mod test {
                     $input,
                     $protocol,
                     WriteOptions::Count($count),
+                    Statistics::new($count),
                 );
                 assert_eq!(s.write().await.unwrap(), $expected);
             }
@@ -377,6 +409,7 @@ mod test {
                 input,
                 protocol.clone(),
                 WriteOptions::Duration(duration),
+                Statistics::default(),
             );
             let start = Instant::now();
             s.write().await.unwrap();
@@ -398,6 +431,7 @@ mod test {
                 input,
                 protocol.clone(),
                 WriteOptions::ConcurrencyWithCount(5, 100_000),
+                Statistics::default(),
             );
             assert_eq!(s.write().await.unwrap(), 100_000);
             println!("[{protocol}] Wrote {} bytes per second", s.throughput());
@@ -416,6 +450,7 @@ mod test {
                 input,
                 protocol.clone(),
                 WriteOptions::ConcurrencyWithDuration(10, duration),
+                Statistics::default(),
             );
 
             let start = Instant::now();
@@ -433,7 +468,13 @@ mod test {
 
     async fn throughput_helper(protocol: Protocol) {
         let addr = bind_socket(&protocol).await;
-        let mut s = SocketManager::new(addr, b"a", protocol.clone(), WriteOptions::Count(100));
+        let mut s = SocketManager::new(
+            addr,
+            b"a",
+            protocol.clone(),
+            WriteOptions::Count(100),
+            Statistics::new(100),
+        );
         s.write().await.unwrap();
         assert!(
             s.throughput() != 0.0,
