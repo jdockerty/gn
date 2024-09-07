@@ -1,9 +1,13 @@
-use std::net::{SocketAddr, ToSocketAddrs};
+use std::{
+    net::{SocketAddr, ToSocketAddrs},
+    sync::Arc,
+};
 
 use futures::{stream::FuturesUnordered, StreamExt};
 use tokio::{
     io::AsyncWriteExt,
     net::{TcpStream, UdpSocket},
+    task::JoinHandle,
     time::Instant,
 };
 
@@ -48,12 +52,12 @@ pub struct SocketManager<'a, S: ToSocketAddrs> {
     input: &'a [u8],
     protocol: Protocol,
     write_options: WriteOptions,
-    stats: Statistics,
+    stats: Arc<Statistics>,
 }
 
 impl<'a, S> SocketManager<'a, S>
 where
-    S: ToSocketAddrs + Sync,
+    S: ToSocketAddrs,
 {
     /// Create a new [`SocketManager`]
     pub fn new(
@@ -68,7 +72,7 @@ where
             input,
             write_options,
             protocol,
-            stats,
+            stats: Arc::new(stats),
         }
     }
 
@@ -78,7 +82,7 @@ where
     ///
     /// NOTE: Owing to truncation from nanosecond precision to seconds, the
     /// produced throughput may not be accurate for low write counts.
-    pub async fn write(&mut self) -> crate::Result<u64> {
+    pub async fn write(&self) -> crate::Result<u64> {
         let addrs = self
             .host
             .to_socket_addrs()
@@ -98,40 +102,38 @@ where
                 }
                 WriteOptions::Duration(duration) => {
                     let for_duration = Instant::now();
-                    loop {
-                        if for_duration.elapsed() >= *duration {
-                            break;
-                        } else {
-                            match write_stream(addr, &self.protocol, self.input).await {
-                                Ok(b) => {
-                                    self.stats.increment_total(b);
-                                    self.stats.record_success();
-                                }
-                                Err(_) => self.stats.record_failure(),
-                            }
-                        }
-                    }
+
+                    let predicate = || for_duration.elapsed() >= *duration;
+                    write_stream_with_predicate(
+                        predicate,
+                        addr,
+                        &self.protocol,
+                        self.input,
+                        &self.stats,
+                    )
+                    .await?;
                 }
                 WriteOptions::CountOrDuration(count, duration) => {
                     let for_duration = Instant::now();
                     let mut sent = 0;
-                    loop {
+                    let predicate = || {
                         if sent == count || for_duration.elapsed() >= *duration {
-                            break;
-                        } else {
-                            match write_stream(addr, &self.protocol, self.input).await {
-                                Ok(b) => {
-                                    self.stats.increment_total(b);
-                                    self.stats.record_success();
-                                }
-                                Err(_) => self.stats.record_failure(),
-                            }
-                            sent += 1;
+                            return true;
                         }
-                    }
+                        sent += 1;
+                        false
+                    };
+                    write_stream_with_predicate(
+                        predicate,
+                        addr,
+                        &self.protocol,
+                        self.input,
+                        &self.stats,
+                    )
+                    .await?;
                 }
                 WriteOptions::ConcurrencyWithCount(concurrency, count) => {
-                    let mut futs = FuturesUnordered::new();
+                    let futs = FuturesUnordered::new();
                     let requests_per_task = count / concurrency;
                     for _ in 0..concurrency {
                         let input = self.input.to_owned();
@@ -153,54 +155,24 @@ where
                         });
                         futs.push(task);
                     }
-                    while let Some(task) = futs.next().await {
-                        let (written, success_count, failure_count) = task?;
-                        self.stats.increment_total(written);
-                        for _ in 0..success_count {
-                            self.stats.record_success();
-                        }
-                        for _ in 0..failure_count {
-                            self.stats.record_failure();
-                        }
-                    }
+                    self.handle_futures(futs).await?;
                 }
                 WriteOptions::ConcurrencyWithDuration(concurrency, duration) => {
-                    let mut futs = FuturesUnordered::new();
+                    let futs = FuturesUnordered::new();
                     for _ in 0..concurrency {
                         let input = self.input.to_owned();
                         let protocol = self.protocol.clone();
+                        let stats = Arc::clone(&self.stats);
                         let task = tokio::spawn(async move {
                             let for_duration = Instant::now();
-                            let mut task_bytes = 0;
-                            let mut success: u64 = 0;
-                            let mut failure: u64 = 0;
-                            loop {
-                                if for_duration.elapsed() >= *duration {
-                                    break;
-                                } else {
-                                    match write_stream(addr, &protocol, &input).await {
-                                        Ok(b) => {
-                                            task_bytes += b;
-                                            success += 1;
-                                        }
-                                        Err(_) => failure += 1,
-                                    }
-                                }
-                            }
-                            (task_bytes, success, failure)
+                            let predicate = || for_duration.elapsed() >= *duration;
+                            write_stream_with_predicate(predicate, addr, &protocol, &input, &stats)
+                                .await
+                                .unwrap()
                         });
                         futs.push(task);
                     }
-                    while let Some(task) = futs.next().await {
-                        let (written, success_count, failure_count) = task?;
-                        self.stats.increment_total(written);
-                        for _ in 0..success_count {
-                            self.stats.record_success();
-                        }
-                        for _ in 0..failure_count {
-                            self.stats.record_failure();
-                        }
-                    }
+                    self.handle_futures(futs).await?;
                 }
             }
         }
@@ -232,6 +204,65 @@ where
     pub fn elapsed(&self) -> u128 {
         self.stats.elapsed()
     }
+
+    /// Helper to handle a number of futures within a [`FuturesUnordered`]
+    /// structure
+    async fn handle_futures(
+        &self,
+        mut futs: FuturesUnordered<JoinHandle<(u64, u64, u64)>>,
+    ) -> crate::Result<()> {
+        while let Some(task) = futs.next().await {
+            let (written, success_count, failure_count) = task?;
+            self.stats.increment_total(written);
+            for _ in 0..success_count {
+                self.stats.record_success();
+            }
+            for _ in 0..failure_count {
+                self.stats.record_failure();
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Utility function for writing to a stream continously through the result of
+/// a given predicate. The predicate is the break condition for the continuous
+/// writes.
+///
+/// For example, passing a predicate of `|| true` means that the loop instantly
+/// breaks and no writes occur.
+async fn write_stream_with_predicate<P>(
+    mut predicate: P,
+    addr: SocketAddr,
+    protocol: &Protocol,
+    input: &[u8],
+    stats: &Statistics,
+) -> crate::Result<(u64, u64, u64)>
+where
+    P: FnMut() -> bool,
+{
+    let mut task_bytes: u64 = 0;
+    let mut task_success: u64 = 0;
+    let mut task_failed: u64 = 0;
+    loop {
+        if predicate() {
+            break;
+        } else {
+            match write_stream(addr, protocol, input).await {
+                Ok(b) => {
+                    task_bytes += b;
+                    task_success += 1;
+                    stats.increment_total(b);
+                    stats.record_success();
+                }
+                Err(_) => {
+                    stats.record_failure();
+                    task_failed += 1;
+                }
+            }
+        }
+    }
+    Ok((task_bytes, task_success, task_failed))
 }
 
 /// Write the provided input data to a [`SocketAddr`] using the chosen [`Protocol`].
@@ -264,7 +295,11 @@ mod test {
 
     use humantime::Duration;
 
-    use crate::{manager::WriteOptions, statistics::Statistics, Protocol, SocketManager};
+    use crate::{
+        manager::{write_stream_with_predicate, WriteOptions},
+        statistics::Statistics,
+        Protocol, SocketManager,
+    };
 
     macro_rules! write_options {
         ($name:ident, opts = $opts:expr, expected = $expected:pat) => {
@@ -319,7 +354,7 @@ mod test {
             #[tokio::test]
             async fn $name() {
                 let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-                let mut s = SocketManager::new(
+                let s = SocketManager::new(
                     listener.local_addr().unwrap(),
                     $input,
                     $protocol,
@@ -435,7 +470,7 @@ mod test {
 
         for protocol in protocols {
             let addr = bind_socket(&protocol).await;
-            let mut s = SocketManager::new(
+            let s = SocketManager::new(
                 addr,
                 input,
                 protocol.clone(),
@@ -457,7 +492,7 @@ mod test {
         for protocol in protocols {
             let addr = bind_socket(&protocol).await;
             let input = b"c";
-            let mut s = SocketManager::new(
+            let s = SocketManager::new(
                 addr,
                 input,
                 protocol.clone(),
@@ -476,7 +511,7 @@ mod test {
         for protocol in protocols {
             let addr = bind_socket(&protocol).await;
             let duration = humantime::Duration::from_str("2s").unwrap();
-            let mut s = SocketManager::new(
+            let s = SocketManager::new(
                 addr,
                 input,
                 protocol.clone(),
@@ -497,9 +532,33 @@ mod test {
         }
     }
 
+    #[tokio::test]
+    async fn duration_direct() {
+        let protocol = Protocol::Tcp;
+        let addr = bind_socket(&protocol).await;
+        let duration = humantime::Duration::from_str("1s").unwrap();
+
+        let stats = Statistics::default();
+        write_stream_with_predicate(|| true, addr, &protocol, b"test", &stats)
+            .await
+            .unwrap();
+        assert_eq!(stats.successful_requests(), 0);
+        assert_eq!(stats.total_bytes(), 0);
+
+        let start = Instant::now();
+        let stats = Statistics::default();
+        let predicate = || start.elapsed() > *duration;
+        write_stream_with_predicate(predicate, addr, &protocol, b"test", &stats)
+            .await
+            .unwrap();
+        assert_eq!(start.elapsed().as_secs(), 1);
+        assert!(stats.total_bytes() > 0);
+        assert!(stats.successful_requests() > 0);
+    }
+
     async fn throughput_helper(protocol: Protocol) {
         let addr = bind_socket(&protocol).await;
-        let mut s = SocketManager::new(
+        let s = SocketManager::new(
             addr,
             b"a",
             protocol.clone(),
