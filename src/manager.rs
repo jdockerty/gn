@@ -219,33 +219,39 @@ where
         self.stats.total_bytes()
     }
 
-    /// The number of successful requests.
+    /// The number of successful requests from the internal [`Statistics`].
     pub fn successful_requests(&self) -> u64 {
         self.stats.successful_requests()
     }
 
-    /// Percentage of requests that were successful.
+    /// Percentage of requests that were successful from the internal [`Statistics`].
     pub fn successful_requests_percentage(&self) -> f64 {
         self.stats.success_percentage()
+    }
+
+    pub fn elapsed(&self) -> u128 {
+        self.stats.elapsed()
     }
 }
 
 /// Write the provided input data to a [`SocketAddr`] using the chosen [`Protocol`].
 async fn write_stream(addr: SocketAddr, protocol: &Protocol, input: &[u8]) -> crate::Result<u64> {
+    let out: u64;
     match protocol {
         Protocol::Tcp => {
             let mut stream = TcpStream::connect(addr).await?;
             stream.write_all(input).await?;
+            out = input.len() as u64;
         }
         Protocol::Udp => {
             // Binding to 0 mimics the functionality of an unspecified socket.
             // It simply assigns a random port for the UDP socket to begin writing.
             // Ref: https://man7.org/linux/man-pages/man7/udp.7.html
             let stream = UdpSocket::bind("127.0.0.1:0").await?;
-            stream.send_to(input, addr).await?;
+            out = stream.send_to(input, addr).await? as u64;
         }
     }
-    Ok(input.len() as u64)
+    Ok(out)
 }
 
 #[cfg(test)]

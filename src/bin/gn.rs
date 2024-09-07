@@ -77,11 +77,24 @@ async fn main() -> gn::Result<()> {
             manager.write().await?;
 
             if stats {
-                writeln!(out, "Wrote {} bytes", manager.total_bytes())?;
-                writeln!(out, "Bytes per second {}", manager.throughput())?;
+                match manager.elapsed() {
+                    0..1000 => writeln!(
+                        out,
+                        "Sent: {} bytes in {}ms",
+                        manager.total_bytes(),
+                        manager.elapsed()
+                    )?,
+                    _ => writeln!(
+                        out,
+                        "Sent: {} bytes in {}s",
+                        manager.total_bytes(),
+                        manager.elapsed() / 1000
+                    )?,
+                }
+                writeln!(out, "Throughput: {} bytes per second", manager.throughput())?;
                 writeln!(
                     out,
-                    "Successful requests {}/{} ({:.2}%)",
+                    "Requests: {}/{} ({:.2}%) successful",
                     manager.successful_requests(),
                     count,
                     manager.successful_requests_percentage()

@@ -64,6 +64,10 @@ impl Statistics {
         self.throughput = self.total_bytes as f64 / self.start_time.elapsed().as_secs() as f64;
     }
 
+    pub fn elapsed(&self) -> u128 {
+        self.start_time.elapsed().as_millis()
+    }
+
     /// Return the recorded throughput
     pub fn throughput(&self) -> f64 {
         self.throughput
