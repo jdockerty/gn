@@ -1,9 +1,13 @@
-use std::net::{SocketAddr, ToSocketAddrs};
+use std::{
+    net::{SocketAddr, ToSocketAddrs},
+    sync::Arc,
+};
 
 use futures::{stream::FuturesUnordered, StreamExt};
 use tokio::{
     io::AsyncWriteExt,
     net::{TcpStream, UdpSocket},
+    task::JoinHandle,
     time::Instant,
 };
 
@@ -48,12 +52,12 @@ pub struct SocketManager<'a, S: ToSocketAddrs> {
     input: &'a [u8],
     protocol: Protocol,
     write_options: WriteOptions,
-    stats: Statistics,
+    stats: Arc<Statistics>,
 }
 
 impl<'a, S> SocketManager<'a, S>
 where
-    S: ToSocketAddrs + Sync,
+    S: ToSocketAddrs,
 {
     /// Create a new [`SocketManager`]
     pub fn new(
@@ -68,7 +72,7 @@ where
             input,
             write_options,
             protocol,
-            stats,
+            stats: Arc::new(stats),
         }
     }
 
@@ -233,7 +237,7 @@ where
         self.stats.elapsed()
     }
 
-    /// Helper to handle a number of futures within a [`FuturesUnordered`] 
+    /// Helper to handle a number of futures within a [`FuturesUnordered`]
     /// structure
     async fn handle_futures(
         &self,
