@@ -71,7 +71,7 @@ async fn main() -> gn::Result<()> {
             stats,
         } => {
             let opts = WriteOptions::from_flags(count, duration, concurrency);
-            let statistics = Statistics::new(count);
+            let statistics = Statistics::new();
             let mut manager =
                 SocketManager::new(host, input.as_bytes(), protocol, opts, statistics);
             manager.write().await?;

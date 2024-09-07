@@ -324,7 +324,7 @@ mod test {
                     $input,
                     $protocol,
                     WriteOptions::Count($count),
-                    Statistics::new($count),
+                    Statistics::new(),
                 );
                 assert_eq!(s.write().await.unwrap(), $expected);
             }
@@ -504,7 +504,7 @@ mod test {
             b"a",
             protocol.clone(),
             WriteOptions::Count(100),
-            Statistics::new(100),
+            Statistics::new(),
         );
         s.write().await.unwrap();
         assert!(
