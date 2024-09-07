@@ -289,7 +289,11 @@ mod test {
 
     use humantime::Duration;
 
-    use crate::{manager::WriteOptions, statistics::Statistics, Protocol, SocketManager};
+    use crate::{
+        manager::{write_stream_for_duration, WriteOptions},
+        statistics::Statistics,
+        Protocol, SocketManager,
+    };
 
     macro_rules! write_options {
         ($name:ident, opts = $opts:expr, expected = $expected:pat) => {
@@ -520,6 +524,36 @@ mod test {
             );
             println!("[{protocol}] Wrote {} bytes per second", s.throughput());
         }
+    }
+
+    #[tokio::test]
+    async fn duration_direct() {
+        let protocol = Protocol::Tcp;
+        let addr = bind_socket(&protocol).await;
+        let duration = humantime::Duration::from_str("1s").unwrap();
+
+        let stats = Statistics::default();
+        write_stream_for_duration(|| true, addr, &protocol, b"test", &stats)
+            .await
+            .unwrap();
+        assert_eq!(stats.successful_requests(), 0);
+        assert_eq!(stats.total_bytes(), 0);
+
+        let start = Instant::now();
+        let stats = Statistics::default();
+        let predicate = || {
+            if start.elapsed() > *duration {
+                true
+            } else {
+                false
+            }
+        };
+        write_stream_for_duration(predicate, addr, &protocol, b"test", &stats)
+            .await
+            .unwrap();
+        assert_eq!(start.elapsed().as_secs(), 1);
+        assert!(stats.total_bytes() > 0);
+        assert!(stats.successful_requests() > 0);
     }
 
     async fn throughput_helper(protocol: Protocol) {
