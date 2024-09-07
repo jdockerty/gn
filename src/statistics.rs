@@ -40,7 +40,7 @@ impl Statistics {
     }
 
     /// Increment the number of failed requests
-    pub fn record_failure(&mut self) {
+    pub fn record_failure(&self) {
         self.failure_count.fetch_add(1, Ordering::Release);
     }
 
@@ -70,7 +70,7 @@ impl Statistics {
     ///
     /// NOTE: Owing to truncation from nanosecond precision to seconds, the
     /// produced throughput may not be accurate for low write counts.
-    pub fn record_throughput(&mut self) {
+    pub fn record_throughput(&self) {
         let throughput = self.total_bytes.load(Ordering::Acquire) as f64
             / self.start_time.elapsed().as_secs() as f64;
         self.throughput.store(throughput, Ordering::Relaxed);
@@ -88,6 +88,8 @@ impl Statistics {
 
 #[cfg(test)]
 mod test {
+    use std::sync::atomic::Ordering;
+
     use super::Statistics;
 
     #[test]
@@ -95,7 +97,7 @@ mod test {
         let mut stats = Statistics::new();
         assert_eq!(stats.total_bytes(), 0);
         assert_eq!(stats.successful_requests(), 0);
-        assert_eq!(stats.failure_count, 0);
+        assert_eq!(stats.failure_count.load(Ordering::Acquire), 0);
 
         stats.increment_total(10);
         assert_eq!(stats.total_bytes(), 10);
@@ -107,7 +109,7 @@ mod test {
         stats.record_failure();
         stats.record_failure();
         stats.record_failure();
-        assert_eq!(stats.failure_count, 3);
+        assert_eq!(stats.failure_count.load(Ordering::Relaxed), 3);
         assert_eq!(stats.success_percentage(), 25.0);
         assert_eq!(stats.request_count(), 4);
     }
