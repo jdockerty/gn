@@ -104,7 +104,7 @@ where
                     let for_duration = Instant::now();
 
                     let predicate = || for_duration.elapsed() >= *duration;
-                    write_stream_for_duration(
+                    write_stream_with_predicate(
                         predicate,
                         addr,
                         &self.protocol,
@@ -123,7 +123,7 @@ where
                         sent += 1;
                         false
                     };
-                    write_stream_for_duration(
+                    write_stream_with_predicate(
                         predicate,
                         addr,
                         &self.protocol,
@@ -166,7 +166,7 @@ where
                         let task = tokio::spawn(async move {
                             let for_duration = Instant::now();
                             let predicate = || for_duration.elapsed() >= *duration;
-                            write_stream_for_duration(predicate, addr, &protocol, &input, &stats)
+                            write_stream_with_predicate(predicate, addr, &protocol, &input, &stats)
                                 .await
                                 .unwrap()
                         });
@@ -225,13 +225,13 @@ where
     }
 }
 
-/// Utility function for writing to a stream for a particular duration, as long
-/// as the predicate remains unfulfilled. The predicate is the break condition
-/// for the continuous writes to occur.
+/// Utility function for writing to a stream continously through the result of
+/// a given predicate. The predicate is the break condition for the continuous
+/// writes.
 ///
 /// For example, passing a predicate of `|| true` means that the loop instantly
 /// breaks and no writes occur.
-async fn write_stream_for_duration<P>(
+async fn write_stream_with_predicate<P>(
     mut predicate: P,
     addr: SocketAddr,
     protocol: &Protocol,
@@ -296,7 +296,7 @@ mod test {
     use humantime::Duration;
 
     use crate::{
-        manager::{write_stream_for_duration, WriteOptions},
+        manager::{write_stream_with_predicate, WriteOptions},
         statistics::Statistics,
         Protocol, SocketManager,
     };
@@ -539,7 +539,7 @@ mod test {
         let duration = humantime::Duration::from_str("1s").unwrap();
 
         let stats = Statistics::default();
-        write_stream_for_duration(|| true, addr, &protocol, b"test", &stats)
+        write_stream_with_predicate(|| true, addr, &protocol, b"test", &stats)
             .await
             .unwrap();
         assert_eq!(stats.successful_requests(), 0);
@@ -547,8 +547,8 @@ mod test {
 
         let start = Instant::now();
         let stats = Statistics::default();
-        let predicate = || start.elapsed() >* duration;
-        write_stream_for_duration(predicate, addr, &protocol, b"test", &stats)
+        let predicate = || start.elapsed() > *duration;
+        write_stream_with_predicate(predicate, addr, &protocol, b"test", &stats)
             .await
             .unwrap();
         assert_eq!(start.elapsed().as_secs(), 1);
