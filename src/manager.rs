@@ -232,6 +232,59 @@ where
     pub fn elapsed(&self) -> u128 {
         self.stats.elapsed()
     }
+
+    /// Helper to handle a number of futures within a [`FuturesUnordered`] 
+    /// structure
+    async fn handle_futures(
+        &self,
+        mut futs: FuturesUnordered<JoinHandle<(u64, u64, u64)>>,
+    ) -> crate::Result<()> {
+        while let Some(task) = futs.next().await {
+            let (written, success_count, failure_count) = task?;
+            self.stats.increment_total(written);
+            for _ in 0..success_count {
+                self.stats.record_success();
+            }
+            for _ in 0..failure_count {
+                self.stats.record_failure();
+            }
+        }
+        Ok(())
+    }
+}
+
+async fn write_stream_for_duration<P>(
+    mut predicate: P,
+    addr: SocketAddr,
+    protocol: &Protocol,
+    input: &[u8],
+    stats: &Statistics,
+) -> crate::Result<(u64, u64, u64)>
+where
+    P: FnMut() -> bool,
+{
+    let mut task_bytes: u64 = 0;
+    let mut task_success: u64 = 0;
+    let mut task_failed: u64 = 0;
+    loop {
+        if predicate() {
+            break;
+        } else {
+            match write_stream(addr, protocol, input).await {
+                Ok(b) => {
+                    task_bytes += b;
+                    task_success += 1;
+                    stats.increment_total(b);
+                    stats.record_success();
+                }
+                Err(_) => {
+                    stats.record_failure();
+                    task_failed += 1;
+                }
+            }
+        }
+    }
+    Ok((task_bytes, task_success, task_failed))
 }
 
 /// Write the provided input data to a [`SocketAddr`] using the chosen [`Protocol`].
