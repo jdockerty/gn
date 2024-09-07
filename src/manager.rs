@@ -547,13 +547,7 @@ mod test {
 
         let start = Instant::now();
         let stats = Statistics::default();
-        let predicate = || {
-            if start.elapsed() > *duration {
-                true
-            } else {
-                false
-            }
-        };
+        let predicate = || start.elapsed() >* duration;
         write_stream_for_duration(predicate, addr, &protocol, b"test", &stats)
             .await
             .unwrap();
