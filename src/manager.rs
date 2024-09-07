@@ -225,6 +225,12 @@ where
     }
 }
 
+/// Utility function for writing to a stream for a particular duration, as long
+/// as the predicate remains unfulfilled. The predicate is the break condition
+/// for the continuous writes to occur.
+///
+/// For example, passing a predicate of `|| true` means that the loop instantly
+/// breaks and no writes occur.
 async fn write_stream_for_duration<P>(
     mut predicate: P,
     addr: SocketAddr,
