@@ -94,7 +94,7 @@ mod test {
 
     #[test]
     fn general() {
-        let mut stats = Statistics::new();
+        let stats = Statistics::new();
         assert_eq!(stats.total_bytes(), 0);
         assert_eq!(stats.successful_requests(), 0);
         assert_eq!(stats.failure_count.load(Ordering::Acquire), 0);

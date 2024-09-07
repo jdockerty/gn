@@ -344,7 +344,7 @@ mod test {
             #[tokio::test]
             async fn $name() {
                 let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-                let mut s = SocketManager::new(
+                let s = SocketManager::new(
                     listener.local_addr().unwrap(),
                     $input,
                     $protocol,
@@ -460,7 +460,7 @@ mod test {
 
         for protocol in protocols {
             let addr = bind_socket(&protocol).await;
-            let mut s = SocketManager::new(
+            let s = SocketManager::new(
                 addr,
                 input,
                 protocol.clone(),
@@ -482,7 +482,7 @@ mod test {
         for protocol in protocols {
             let addr = bind_socket(&protocol).await;
             let input = b"c";
-            let mut s = SocketManager::new(
+            let s = SocketManager::new(
                 addr,
                 input,
                 protocol.clone(),
@@ -501,7 +501,7 @@ mod test {
         for protocol in protocols {
             let addr = bind_socket(&protocol).await;
             let duration = humantime::Duration::from_str("2s").unwrap();
-            let mut s = SocketManager::new(
+            let s = SocketManager::new(
                 addr,
                 input,
                 protocol.clone(),
@@ -524,7 +524,7 @@ mod test {
 
     async fn throughput_helper(protocol: Protocol) {
         let addr = bind_socket(&protocol).await;
-        let mut s = SocketManager::new(
+        let s = SocketManager::new(
             addr,
             b"a",
             protocol.clone(),
