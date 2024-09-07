@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 
 use clap::{Parser, Subcommand};
 use clap_stdin::MaybeStdin;
-use gn::{Protocol, Server, SocketManager, WriteOptions};
+use gn::{statistics::Statistics, Protocol, Server, SocketManager, WriteOptions};
 
 #[derive(Parser)]
 struct App {
@@ -71,12 +71,34 @@ async fn main() -> gn::Result<()> {
             stats,
         } => {
             let opts = WriteOptions::from_flags(count, duration, concurrency);
-            let mut manager = SocketManager::new(host, input.as_bytes(), protocol, opts);
+            let statistics = Statistics::new();
+            let mut manager =
+                SocketManager::new(host, input.as_bytes(), protocol, opts, statistics);
             manager.write().await?;
 
             if stats {
-                writeln!(out, "Wrote {} bytes", manager.total_bytes())?;
-                writeln!(out, "Bytes per second {}", manager.throughput())?;
+                match manager.elapsed() {
+                    0..1000 => writeln!(
+                        out,
+                        "Sent: {} bytes in {}ms",
+                        manager.total_bytes(),
+                        manager.elapsed()
+                    )?,
+                    _ => writeln!(
+                        out,
+                        "Sent: {} bytes in {}s",
+                        manager.total_bytes(),
+                        manager.elapsed() / 1000
+                    )?,
+                }
+                writeln!(out, "Throughput: {} bytes per second", manager.throughput())?;
+                writeln!(
+                    out,
+                    "Requests: {}/{} ({:.2}%) successful",
+                    manager.successful_requests(),
+                    count,
+                    manager.successful_requests_percentage()
+                )?;
             }
         }
         Commands::Serve { address, protocol } => {
