@@ -5,7 +5,6 @@ pub struct Statistics {
     total_bytes: u64,
     max_count: u64,
     success_count: u64,
-    #[allow(dead_code)] // TODO
     failure_count: u64,
     throughput: f64,
 }
@@ -33,9 +32,14 @@ impl Statistics {
         self.total_bytes += inc
     }
 
-    /// Increment the total number of bytes written
-    pub fn increment_successful_request(&mut self) {
+    /// Increment the number of successful requests
+    pub fn record_success(&mut self) {
         self.success_count += 1;
+    }
+
+    /// Increment the number of failed requests
+    pub fn record_failure(&mut self) {
+        self.failure_count += 1;
     }
 
     pub fn successful_requests(&self) -> u64 {
@@ -43,7 +47,7 @@ impl Statistics {
     }
 
     pub fn success_percentage(&self) -> f64 {
-        (self.success_count / self.max_count) as f64 * 100.0
+        (self.success_count as f64 / self.max_count as f64) * 100.0
     }
 
     /// Get the total number of bytes written
