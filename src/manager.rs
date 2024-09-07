@@ -82,7 +82,7 @@ where
     ///
     /// NOTE: Owing to truncation from nanosecond precision to seconds, the
     /// produced throughput may not be accurate for low write counts.
-    pub async fn write(&mut self) -> crate::Result<u64> {
+    pub async fn write(&self) -> crate::Result<u64> {
         let addrs = self
             .host
             .to_socket_addrs()
@@ -102,40 +102,38 @@ where
                 }
                 WriteOptions::Duration(duration) => {
                     let for_duration = Instant::now();
-                    loop {
-                        if for_duration.elapsed() >= *duration {
-                            break;
-                        } else {
-                            match write_stream(addr, &self.protocol, self.input).await {
-                                Ok(b) => {
-                                    self.stats.increment_total(b);
-                                    self.stats.record_success();
-                                }
-                                Err(_) => self.stats.record_failure(),
-                            }
-                        }
-                    }
+
+                    let predicate = || for_duration.elapsed() >= *duration;
+                    write_stream_for_duration(
+                        predicate,
+                        addr,
+                        &self.protocol,
+                        self.input,
+                        &self.stats,
+                    )
+                    .await?;
                 }
                 WriteOptions::CountOrDuration(count, duration) => {
                     let for_duration = Instant::now();
                     let mut sent = 0;
-                    loop {
+                    let predicate = || {
                         if sent == count || for_duration.elapsed() >= *duration {
-                            break;
-                        } else {
-                            match write_stream(addr, &self.protocol, self.input).await {
-                                Ok(b) => {
-                                    self.stats.increment_total(b);
-                                    self.stats.record_success();
-                                }
-                                Err(_) => self.stats.record_failure(),
-                            }
-                            sent += 1;
+                            return true;
                         }
-                    }
+                        sent += 1;
+                        false
+                    };
+                    write_stream_for_duration(
+                        predicate,
+                        addr,
+                        &self.protocol,
+                        self.input,
+                        &self.stats,
+                    )
+                    .await?;
                 }
                 WriteOptions::ConcurrencyWithCount(concurrency, count) => {
-                    let mut futs = FuturesUnordered::new();
+                    let futs = FuturesUnordered::new();
                     let requests_per_task = count / concurrency;
                     for _ in 0..concurrency {
                         let input = self.input.to_owned();
@@ -157,54 +155,24 @@ where
                         });
                         futs.push(task);
                     }
-                    while let Some(task) = futs.next().await {
-                        let (written, success_count, failure_count) = task?;
-                        self.stats.increment_total(written);
-                        for _ in 0..success_count {
-                            self.stats.record_success();
-                        }
-                        for _ in 0..failure_count {
-                            self.stats.record_failure();
-                        }
-                    }
+                    self.handle_futures(futs).await?;
                 }
                 WriteOptions::ConcurrencyWithDuration(concurrency, duration) => {
-                    let mut futs = FuturesUnordered::new();
+                    let futs = FuturesUnordered::new();
                     for _ in 0..concurrency {
                         let input = self.input.to_owned();
                         let protocol = self.protocol.clone();
+                        let stats = Arc::clone(&self.stats);
                         let task = tokio::spawn(async move {
                             let for_duration = Instant::now();
-                            let mut task_bytes = 0;
-                            let mut success: u64 = 0;
-                            let mut failure: u64 = 0;
-                            loop {
-                                if for_duration.elapsed() >= *duration {
-                                    break;
-                                } else {
-                                    match write_stream(addr, &protocol, &input).await {
-                                        Ok(b) => {
-                                            task_bytes += b;
-                                            success += 1;
-                                        }
-                                        Err(_) => failure += 1,
-                                    }
-                                }
-                            }
-                            (task_bytes, success, failure)
+                            let predicate = || for_duration.elapsed() >= *duration;
+                            write_stream_for_duration(predicate, addr, &protocol, &input, &stats)
+                                .await
+                                .unwrap()
                         });
                         futs.push(task);
                     }
-                    while let Some(task) = futs.next().await {
-                        let (written, success_count, failure_count) = task?;
-                        self.stats.increment_total(written);
-                        for _ in 0..success_count {
-                            self.stats.record_success();
-                        }
-                        for _ in 0..failure_count {
-                            self.stats.record_failure();
-                        }
-                    }
+                    self.handle_futures(futs).await?;
                 }
             }
         }
