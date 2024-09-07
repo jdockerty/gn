@@ -81,7 +81,7 @@ async fn main() -> gn::Result<()> {
                 writeln!(out, "Bytes per second {}", manager.throughput())?;
                 writeln!(
                     out,
-                    "Successful requests {}/{} ({}%)",
+                    "Successful requests {}/{} ({:.2}%)",
                     manager.successful_requests(),
                     count,
                     manager.successful_requests_percentage()
