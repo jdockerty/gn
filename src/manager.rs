@@ -87,9 +87,13 @@ where
             match self.write_options {
                 WriteOptions::Count(count) => {
                     for _ in 0..count {
-                        self.stats
-                            .increment_total(write_stream(addr, &self.protocol, self.input).await?);
-                        self.stats.increment_successful_request();
+                        match write_stream(addr, &self.protocol, self.input).await {
+                            Ok(b) => {
+                                self.stats.increment_total(b);
+                                self.stats.record_success();
+                            }
+                            Err(_) => self.stats.record_failure(),
+                        }
                     }
                 }
                 WriteOptions::Duration(duration) => {
@@ -98,10 +102,13 @@ where
                         if for_duration.elapsed() >= *duration {
                             break;
                         } else {
-                            self.stats.increment_total(
-                                write_stream(addr, &self.protocol, self.input).await?,
-                            );
-                            self.stats.increment_successful_request();
+                            match write_stream(addr, &self.protocol, self.input).await {
+                                Ok(b) => {
+                                    self.stats.increment_total(b);
+                                    self.stats.record_success();
+                                }
+                                Err(_) => self.stats.record_failure(),
+                            }
                         }
                     }
                 }
@@ -112,11 +119,14 @@ where
                         if sent == count || for_duration.elapsed() >= *duration {
                             break;
                         } else {
-                            self.stats.increment_total(
-                                write_stream(addr, &self.protocol, self.input).await?,
-                            );
+                            match write_stream(addr, &self.protocol, self.input).await {
+                                Ok(b) => {
+                                    self.stats.increment_total(b);
+                                    self.stats.record_success();
+                                }
+                                Err(_) => self.stats.record_failure(),
+                            }
                             sent += 1;
-                            self.stats.increment_successful_request();
                         }
                     }
                 }
@@ -129,21 +139,28 @@ where
                         let task = tokio::spawn(async move {
                             let mut task_bytes = 0;
                             let mut success: u64 = 0;
+                            let mut failure: u64 = 0;
                             for _ in 0..requests_per_task {
-                                task_bytes += write_stream(addr, &protocol, input.as_slice())
-                                    .await
-                                    .unwrap();
-                                success += 1;
+                                match write_stream(addr, &protocol, &input).await {
+                                    Ok(b) => {
+                                        task_bytes += b;
+                                        success += 1;
+                                    }
+                                    Err(_) => failure += 1,
+                                }
                             }
-                            (task_bytes, success)
+                            (task_bytes, success, failure)
                         });
                         futs.push(task);
                     }
                     while let Some(task) = futs.next().await {
-                        let (written, success_count) = task?;
+                        let (written, success_count, failure_count) = task?;
                         self.stats.increment_total(written);
                         for _ in 0..success_count {
-                            self.stats.increment_successful_request();
+                            self.stats.record_success();
+                        }
+                        for _ in 0..failure_count {
+                            self.stats.record_failure();
                         }
                     }
                 }
@@ -156,24 +173,32 @@ where
                             let for_duration = Instant::now();
                             let mut task_bytes = 0;
                             let mut success: u64 = 0;
+                            let mut failure: u64 = 0;
                             loop {
                                 if for_duration.elapsed() >= *duration {
                                     break;
                                 } else {
-                                    task_bytes +=
-                                        write_stream(addr, &protocol, &input).await.unwrap();
-                                    success += 1;
+                                    match write_stream(addr, &protocol, &input).await {
+                                        Ok(b) => {
+                                            task_bytes += b;
+                                            success += 1;
+                                        }
+                                        Err(_) => failure += 1,
+                                    }
                                 }
                             }
-                            (task_bytes, success)
+                            (task_bytes, success, failure)
                         });
                         futs.push(task);
                     }
                     while let Some(task) = futs.next().await {
-                        let (written, success_count) = task?;
+                        let (written, success_count, failure_count) = task?;
                         self.stats.increment_total(written);
                         for _ in 0..success_count {
-                            self.stats.increment_successful_request();
+                            self.stats.record_success();
+                        }
+                        for _ in 0..failure_count {
+                            self.stats.record_failure();
                         }
                     }
                 }
